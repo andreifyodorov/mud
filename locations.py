@@ -3,10 +3,11 @@
 class Location(object):
     all = {}
 
-    def __init__(self, id, descr):
+    def __init__(self, id, name, descr):
         if id in self.all:
             raise Exception('Location %s exists' % id)
         self.id = id
+        self.name = name
         self.descr = descr
         self.exits = {}
         self.all[id] = self
@@ -14,13 +15,18 @@ class Location(object):
     def add_exit(self, direction, **kwargs):
         self.exits[direction] = kwargs
 
+    def __repr__(self):
+        return repr(self.id)
+
 
 StartLocation = Field = Location(
     id='loc_field',
+    name='a field',
     descr='in a middle of a field.')
 
 Village = Location(
     id='loc_village',
+    name='a village',
     descr='in a village.')
 
 Field.add_exit(

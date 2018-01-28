@@ -1,27 +1,56 @@
 #!/usr/bin/env python
 
 # - add items
-# - add inventory
+# - add bag
 # - add npcs
 # - add (re)start sequence
 # - autocomplete commands /n instead of /north
 
 from locations import StartLocation
+from commodities import Vegetable
 from itertools import count
 
 
-class Actor(object):
-    def __init__(self, _id):
-        self.id = _id
+class State(object):
+    pass
+
+
+class ActorState(State):
+    def __init__(self):
+        super(ActorState, self).__init__()
         self.alive = False
         self.location = None
-        self.inventory = {}
+        self.bag = set()
+
+    def __repr__(self):
+        return str(self.__dict__)
 
 
-class Player(Actor):
-    def __init__(self, _id):
-        super(Player, self,).__init__(_id)
+class PlayerState(ActorState):
+    def __init__(self, send_callback):
+        super(PlayerState, self).__init__()
+        self.send = send_callback or (lambda message: None)
         self.confirm = {}
+        self.name = 'Player'
+
+    @property
+    def descr(self):
+        return 'another player'
+
+
+class WorldState(State):
+    def __init__(self):
+        super(WorldState, self).__init__()
+        self.items = set()
+        self.actors = set()
+        self.events = []
+
+    def broadcast(self, message, skip_sender=None):
+        for actor in self.actors:
+            if skip_sender is not None and actor is skip_sender:
+                continue
+            if isinstance(actor, PlayerState):
+                actor.send(message.capitalize())
 
 
 class UnknownStateMutatorCommand(Exception):
@@ -35,11 +64,18 @@ class StateMutator(object):
 
     @property
     def location(self):
-        return self.world[self.location.id]
+        return self.world[self.actor.location.id]
+
+    def anounce(self, message):
+        self.location.broadcast("%s %s" % (self.actor.name, message), skip_sender=self.actor)
 
     def get_commands(self):
         for l in self.actor.location.exits.keys():
             yield l, lambda: self.go(l)
+        if self.location.items:
+            yield 'pick', self.pick
+        if self.actor.bag:
+            yield 'drop', self.drop
 
     def dispatch(self, command, *args):
         for cmd, handler in self.get_commands():
@@ -48,13 +84,30 @@ class StateMutator(object):
         raise UnknownStateMutatorCommand
 
     def go(self, direction):
-        self.actor.location = self.actor.location.exits[direction]['location']
+        old = self.actor.location
+        new = self.actor.location.exits[direction]['location']
+        self.anounce('leaves to %s.' % new.name)
+        self.location.actors.remove(self.actor)
+        self.actor.location = new
+        self.anounce('arrives from %s.' % old.name)
+        self.location.actors.add(self.actor)
+
+    def pick(self):
+        for item in self.location.items:
+            self.anounce('picks up %s.' % item.name)
+        self.actor.bag.update(self.location.items)
+        self.location.items.clear()
+
+    def drop(self):
+        for item in self.actor.bag:
+            self.anounce('drops %s on the ground.' % item.name)
+        self.location.items.update(self.actor.bag)
+        self.actor.bag.clear()
 
 
 class Chatflow(StateMutator):
-    def __init__(self, actor, world, reply_callback, command_prefix=""):
+    def __init__(self, actor, world, command_prefix=""):
         super(Chatflow, self).__init__(actor, world)
-        self.reply_callback = reply_callback
         self.command_prefix = command_prefix
 
 
@@ -108,6 +161,9 @@ class Chatflow(StateMutator):
 
                 yield 'where', lambda: self.where(verb="are still")
 
+                if self.actor.bag:
+                    yield 'bag', self.bag
+
                 for command in super(Chatflow, self).get_commands():
                     yield command
 
@@ -117,14 +173,16 @@ class Chatflow(StateMutator):
 
     def reply(self, result):
         if isinstance(result, basestring):
-            self.reply_callback(result)
+            self.actor.send(result)
         elif result is not None:
-            self.reply_callback("\n".join(result))
+            self.actor.send("\n".join(result))
 
 
     def start(self):
         self.actor.alive = True
         self.actor.location = StartLocation
+        self.anounce('materializes.')
+        self.location.actors.add(self.actor)
         return self.where(verb="wake up")
 
 
@@ -137,6 +195,12 @@ class Chatflow(StateMutator):
         yield 'You %s %s' % (verb, self.actor.location.descr)
         for direction, exit in self.actor.location.exits.iteritems():
             yield exit['descr'] % (self.command_prefix + direction)
+        for item in self.location.items:
+            yield "On the ground you see %s. You can %spick it up." % (item.name, self.command_prefix)
+        for actor in self.location.actors:
+            if actor is self.actor:
+                continue
+            yield "You see %s." % actor.descr
 
 
     def go(self, direction):
@@ -144,20 +208,48 @@ class Chatflow(StateMutator):
         return self.where()
 
 
+    def pick(self):
+        for item in self.location.items:
+            yield "You put %s into your %sbag." % (item.name, self.command_prefix)
+        super(Chatflow, self).pick()
+
+
+    def drop(self):
+        for item in self.actor.bag:
+            yield "You drop %s on the ground." % item.name
+        super(Chatflow, self).drop()
+
+
+    def bag(self):
+        if len(self.actor.bag) == 1:
+            item, = self.actor.bag
+            yield "In your bag there's nothing but %s. You can %sdrop it" \
+                  % (item.name, self.command_prefix)
+        else:
+            yield "You look into your bag and see:"
+            for n, item in enumerate(self.actor.bag.values()):
+                yield "%d. %s" % (n + 1, item.name)
+            yield "You can %sdrop it" % (self.command_prefix)
+
+
+
 if __name__ == '__main__':
     from colored import fore, style
     import re
+    from collections import defaultdict
 
     def output(msg):
         msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
         print fore.YELLOW + msg + style.RESET
 
-    player = Player(1)
-    world = {}
+    player = PlayerState(send_callback=output)
+
+    world = defaultdict(WorldState)
+    world[StartLocation.id].items.add(Vegetable())
 
     s = '/start'
     while True:
-        chatflow = Chatflow(player, world, output, command_prefix='/')
+        chatflow = Chatflow(player, world, command_prefix='/')
         chatflow.process_message(s)
 
         try:
@@ -165,4 +257,5 @@ if __name__ == '__main__':
             s = raw_input('%s> ' % player.confirm)
         except (EOFError, KeyboardInterrupt):
             break
+
 
