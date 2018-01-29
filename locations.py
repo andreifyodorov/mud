@@ -15,9 +15,6 @@ class Location(object):
     def add_exit(self, direction, **kwargs):
         self.exits[direction] = kwargs
 
-    def __repr__(self):
-        return repr(self.id)
-
 
 StartLocation = Field = Location(
     id='loc_field',

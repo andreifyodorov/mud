@@ -22,9 +22,6 @@ class ActorState(State):
         self.location = None
         self.bag = set()
 
-    def __repr__(self):
-        return str(self.__dict__)
-
 
 class PlayerState(ActorState):
     def __init__(self, send_callback):
@@ -43,7 +40,6 @@ class WorldState(State):
         super(WorldState, self).__init__()
         self.items = set()
         self.actors = set()
-        self.events = []
 
     def broadcast(self, message, skip_sender=None):
         for actor in self.actors:
@@ -82,6 +78,11 @@ class StateMutator(object):
             if cmd == command:
                 return handler(*args)
         raise UnknownStateMutatorCommand
+
+    def die(self):
+        if self.actor.alive:
+            self.anounce('dies.')
+            self.location.actors.remove(self.actor)
 
     def go(self, direction):
         old = self.actor.location
@@ -179,6 +180,7 @@ class Chatflow(StateMutator):
 
 
     def start(self):
+        self.die()
         self.actor.alive = True
         self.actor.location = StartLocation
         self.anounce('materializes.')

@@ -1,4 +1,8 @@
 #!/usr/bin/env python
 
-class Vegetable(object):
+class Commodity(object):
+    pass
+
+
+class Vegetable(Commodity):
     name = 'a vegetable'
