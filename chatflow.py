@@ -8,7 +8,7 @@
 
 from locations import StartLocation
 from commodities import Vegetable
-from itertools import count
+from itertools import chain
 
 
 class State(object):
@@ -24,15 +24,17 @@ class ActorState(State):
 
 
 class PlayerState(ActorState):
+
     def __init__(self, send_callback):
         super(PlayerState, self).__init__()
         self.send = send_callback or (lambda message: None)
         self.confirm = {}
-        self.name = 'Player'
+        self.input = {}
+        self.name = None
 
     @property
     def descr(self):
-        return 'another player'
+        return 'player called %s' % self.name
 
 
 class WorldState(State):
@@ -73,16 +75,19 @@ class StateMutator(object):
         if self.actor.bag:
             yield 'drop', self.drop
 
-    def dispatch(self, command, *args):
+    def dispatch(self, command, *args, **kwargs):
         for cmd, handler in self.get_commands():
             if cmd == command:
-                return handler(*args)
+                return handler(*args, **kwargs)
         raise UnknownStateMutatorCommand
 
     def die(self):
         if self.actor.alive:
             self.anounce('dies.')
             self.location.actors.remove(self.actor)
+            self.location.items.update(self.actor.bag)
+            self.actor.bag.clear()
+            self.actor.alive = False
 
     def go(self, direction):
         old = self.actor.location
@@ -113,25 +118,37 @@ class Chatflow(StateMutator):
 
 
     def process_message(self, text):
-        for tokens in self.tokenize(text):
-            for command, args in self.get_user_commands(*tokens):
+        tokens = self.tokenize(text)
+        if tokens:
+            if self.actor.input:
+                self.actor.input.update(answered=text)
+
+            for command, args in self.get_command_args(*tokens):
                 try:
                     result = self.dispatch(command, *args)
                     self.reply(result)
                 except UnknownStateMutatorCommand:
-                    self.reply(
-                        "Unknown command. Send %shelp for list of commands" % self.command_prefix)
+                    if not 'answered' in self.actor.input:
+                        self.reply("Unknown command. Send %shelp for list of commands"
+                                   % self.command_prefix)
+                else:
+                    if 'answered' in self.actor.input:
+                        self.actor.input.clear()
 
 
     def tokenize(self, text):
-        yield text.lower().split(" ")  # tokenize
+        return text.split(None, 1)
 
 
-    def get_user_commands(self, command, *args):
-        if self.command_prefix and not command.startswith(self.command_prefix):
-            return
-        yield command[len(self.command_prefix):], args
-        # additional state mutation loop
+    def get_command_args(self, command, *args):
+        if not self.command_prefix or command.startswith(self.command_prefix):
+            yield command[len(self.command_prefix):].lower(), args
+
+        # additional state mutation iterations
+
+        if 'answered' in self.actor.input:
+            yield self.actor.input['command'], [self.actor.input['answered']]
+
         if 'yes' in self.actor.confirm:
             yield self.actor.confirm['command'], []
 
@@ -157,8 +174,7 @@ class Chatflow(StateMutator):
                 yield 'no', lambda: self.actor.confirm.clear()
 
             else:
-                yield self.confirmation(
-                    'restart', "Do you want to restart the game?", self.start)
+                yield self.confirmation('restart', "Do you want to restart the game?", self.die)
 
                 yield 'where', lambda: self.where(verb="are still")
 
@@ -170,6 +186,7 @@ class Chatflow(StateMutator):
 
         else:
             yield 'start', self.start
+            yield 'name', self.name
 
 
     def reply(self, result):
@@ -179,8 +196,25 @@ class Chatflow(StateMutator):
             self.actor.send("\n".join(result))
 
 
+    def welcome(self):
+        yield "Hello and welcome to this little MUD game."
+
+
+    def name(self, name=None):
+        if name is None:
+            yield "Please tell me your name."
+            self.actor.input.update(command='name')
+
+        else:
+            yield "Hello, %s." % name
+            yield "You can {0}start the game now " \
+                  "or give me another {0}name.".format(self.command_prefix)
+            self.actor.name = name
+
+
     def start(self):
-        self.die()
+        if self.actor.name is None:
+            return chain(self.welcome(), self.name())
         self.actor.alive = True
         self.actor.location = StartLocation
         self.anounce('materializes.')
@@ -234,6 +268,11 @@ class Chatflow(StateMutator):
             yield "You can %sdrop it" % (self.command_prefix)
 
 
+    def die(self):
+        super(Chatflow, self).die()
+        return "You die."
+
+
 
 if __name__ == '__main__':
     from colored import fore, style
@@ -256,7 +295,7 @@ if __name__ == '__main__':
 
         try:
             # s = raw_input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
-            s = raw_input('%s> ' % player.confirm)
+            s = raw_input('%s> ' % player.input)
         except (EOFError, KeyboardInterrupt):
             break
 

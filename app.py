@@ -107,6 +107,8 @@ class States(object):
     def serialize_state(self, state):
         serialized = {}
         for k, o in vars(state).iteritems():
+            if isinstance(o, (dict, set)) and not o:
+                continue
             v = self.serialize(o)
             if v is not None:
                 serialized[k] = v
