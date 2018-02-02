@@ -10,6 +10,7 @@ class Location(object):
         self.name = name
         self.descr = descr
         self.exits = {}
+
         self.all[id] = self
 
     def add_exit(self, direction, **kwargs):

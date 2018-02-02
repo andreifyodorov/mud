@@ -6,3 +6,7 @@ class Commodity(object):
 
 class Vegetable(Commodity):
     name = 'a vegetable'
+
+
+class Cotton(Commodity):
+    name = 'cotton'
