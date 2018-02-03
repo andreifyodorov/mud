@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 from commodities import Vegetable, Cotton
 from random import choice
 
@@ -14,7 +12,6 @@ class Land(MeansOfProduction):
 
     def produce(self):
         return choice([Vegetable, Cotton])()
-
 
 
 class Factory(MeansOfProduction):

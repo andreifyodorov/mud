@@ -1,31 +1,39 @@
-#!/usr/bin/env python
-
+from itertools import chain
 from redis import StrictRedis
 
 from chatflow import State, PlayerState, WorldState, Chatflow
-from locations import Location, StartLocation
+from locations import Location
+from production import MeansOfProduction, Land
 from commodities import Commodity, Vegetable
+
 import settings
 
 
+PLAYER_KEY = "player:%s"
+LOCATION_KEY = "location:%s"
+
+
 redis = StrictRedis(**settings.REDIS)
-redis.delete('global_lock')
+
+if settings.IS_PLAYGROUND:
+    redis.delete('global_lock')
 
 
 class Storage(object):
-    def __init__(self, redis, send_callback_factory):
-        self.redis = redis
+    def __init__(self, send_callback_factory, redis_=None, chatkey_type=None):
         self.send_callback_factory = send_callback_factory
+        self.redis = redis_ or redis
+        self.chatkey_type = chatkey_type or int
         self.players = {}
         self.chatkeys = {}
 
-        self.lock_object = self.redis.lock('global_lock')
+        self.lock_object = redis.lock('global_lock', timeout=2)
         self.lock_object.acquire()
 
         self.world = {}
         for location_id in Location.all.iterkeys():
             state = WorldState()
-            serialized = self.redis.get("location:%s" % location_id)
+            serialized = redis.get(LOCATION_KEY % location_id)
             if serialized is not None:
                 self.deserialize_state(state, serialized)
             self.world[location_id] = state
@@ -35,10 +43,9 @@ class Storage(object):
         if chatkey in self.players:
             return self.players[chatkey]
 
-        send_callback = self.send_callback_factory(chatkey)
-        player = PlayerState(send_callback=send_callback)
+        player = PlayerState(send_callback=self.send_callback_factory(chatkey))
 
-        serialized = self.redis.get("player:%s" % chatkey)
+        serialized = self.redis.get(PLAYER_KEY % chatkey)
         if serialized is not None:
             self.deserialize_state(player, serialized)
 
@@ -47,14 +54,22 @@ class Storage(object):
         return player
 
 
-    def save(self):
+    def dump(self):
         for chatkey, state in self.players.iteritems():
-            self.redis.set("player:%s" % chatkey, repr(self.serialize_state(state)))
-
+            yield "player:%s" % chatkey, repr(self.serialize_state(state))
         for location_id, state in self.world.iteritems():
-            self.redis.set("location:%s" % location_id, repr(self.serialize_state(state)))
+            yield "location:%s" % location_id, repr(self.serialize_state(state))
 
+
+    def save(self):
+        for k, v in self.dump():
+            self.redis.set(k, v)
         self.lock_object.release()
+
+
+    def print_dump(self):
+        for k, v in self.dump():
+            print "%s\t%s" % (k, v)
 
 
     def deserialize_state(self, state, serialized):
@@ -77,7 +92,9 @@ class Storage(object):
                 return self.get_player_state(arg)
             else:
                 o = None
-                for subcls in Commodity.__subclasses__():
+                subclasses = chain.from_iterable(
+                    c.__subclasses__() for c in (Commodity, MeansOfProduction))
+                for subcls in subclasses:
                     if subcls.__name__ == cls:
                         o = subcls()
                         break
@@ -107,9 +124,24 @@ class Storage(object):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
-        elif isinstance(o, Commodity):
+        elif isinstance(o, (Commodity, MeansOfProduction)):
             return (o.__class__.__name__, o.__dict__)
         elif isinstance(o, (set, list)):
             return [self.serialize(x) for x in o]
         elif isinstance(o, (basestring, int, float, bool, dict)):
             return o
+
+
+    def all_players(self):
+        keys = (key.split(":", 1) for key in redis.keys(PLAYER_KEY % "*"))
+        for prefix, chatkey in keys:
+            yield self.get_player_state(self.chatkey_type(chatkey))
+
+    @property
+    def version(self):
+        return self.redis.get('version')
+
+    @version.setter
+    def version(self, value):
+        self.redis.set('version', value)
+

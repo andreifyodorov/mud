@@ -1,11 +1,5 @@
 #!/usr/bin/env python
 
-# - add items
-# - add bag
-# - add npcs
-# - add (re)start sequence
-# - autocomplete commands /n instead of /north
-
 from locations import StartLocation
 from commodities import Vegetable, Cotton
 from production import Land
@@ -99,6 +93,7 @@ class StateMutator(object):
             self.location.actors.remove(self.actor)
             self.location.items.update(self.actor.bag)
             self.actor.bag.clear()
+            self.actor.location = None
             self.actor.alive = False
 
     def go(self, direction):
@@ -233,38 +228,38 @@ class Chatflow(StateMutator):
     def get_commands(self):
         yield 'help', self.help
 
+        if self.actor.confirm and not 'answered' in self.actor.confirm:
+            yield 'yes', lambda: self.actor.confirm.update(answered=True, yes=True)
+            yield 'no', lambda: self.actor.confirm.clear()
+            return
+
         if self.actor.alive:
+            yield self.confirmation('restart', self.die, "Do you want to restart the game?")
 
-            if self.actor.confirm and not 'answered' in self.actor.confirm:
-                yield 'yes', lambda: self.actor.confirm.update(answered=True, yes=True)
-                yield 'no', lambda: self.actor.confirm.clear()
+            yield 'where', lambda: self.where(verb="are still")
 
+            if self.actor.bag:
+                yield 'bag', self.bag
             else:
-                yield self.confirmation('restart', self.die, "Do you want to restart the game?")
+                yield 'bag', lambda: 'Your bag is empty.'
 
-                yield 'where', lambda: self.where(verb="are still")
+            for cmd, f in super(Chatflow, self).get_commands():
+                if cmd == 'drop':
+                    yield self.choice(cmd, f, self.actor.bag, all_=True)
 
-                if self.actor.bag:
-                    yield 'bag', self.bag
+                elif cmd == 'pick':
+                    yield self.choice(cmd, f, self.location.items, all_=True)
+
+                    if len(self.location.items) > 1:
+                        yield 'collect', lambda: self.pick(self.location.items)
+
                 else:
-                    yield 'bag', lambda: 'Your bag is empty.'
+                    yield cmd, f
 
-                for cmd, f in super(Chatflow, self).get_commands():
-                    if cmd == 'drop':
-                        yield self.choice(cmd, f, self.actor.bag, all_=True)
+            return
 
-                    elif cmd == 'pick':
-                        yield self.choice(cmd, f, self.location.items, all_=True)
-
-                        if len(self.location.items) > 1:
-                            yield 'collect', lambda: self.pick(self.location.items)
-
-                    else:
-                        yield cmd, f
-
-        else:
-            yield 'start', self.start
-            yield 'name', self.name
+        yield 'start', self.start
+        yield 'name', self.name
 
 
     def reply(self, result):
