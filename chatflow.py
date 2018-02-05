@@ -16,6 +16,7 @@ class ActorState(State):
         self.alive = False
         self.location = None
         self.bag = set()
+        self.coins = 0
 
 
 class PlayerState(ActorState):
@@ -29,7 +30,7 @@ class PlayerState(ActorState):
 
     @property
     def descr(self):
-        return 'a player called %s' % self.name
+        return '%s (player)' % self.name
 
 
 class WorldState(State):
@@ -47,12 +48,10 @@ class WorldState(State):
                 actor.send(message.capitalize())
 
 
-class UnknownStateMutatorCommand(Exception):
-    pass
-
-
 def pretty_list(items):
     items = sorted(items, key=lambda item: item.name)
+    if len(items) == 0:
+        return 'nothing'
     if len(items) == 1:
         item, = items
         return item.name
@@ -71,21 +70,12 @@ class StateMutator(object):
     def anounce(self, message):
         self.location.broadcast("%s %s" % (self.actor.name, message), skip_sender=self.actor)
 
-    def get_commands(self):
-        for means in self.location.means:
-            yield means.verb, lambda: self.produce(means)
-        for l in self.actor.location.exits.keys():
-            yield l, lambda: self.go(l)
-        if self.location.items:
-            yield 'pick', self.pick
-        if self.actor.bag:
-            yield 'drop', self.drop
-
-    def dispatch(self, command, *args, **kwargs):
-        for cmd, handler in self.get_commands():
-            if cmd == command:
-                return handler(*args, **kwargs)
-        raise UnknownStateMutatorCommand
+    def spawn(self, location):
+        if not self.actor.location and not self.actor.alive:
+            self.actor.alive = True
+            self.actor.location = location
+            self.location.actors.add(self.actor)
+            self.anounce('materializes.')
 
     def die(self):
         if self.actor.alive:
@@ -105,7 +95,7 @@ class StateMutator(object):
         self.anounce('arrives from %s.' % old.name)
         self.location.actors.add(self.actor)
 
-    def _relocate(self, item_or_items, source, destination):
+    def _relocate(self, item_or_items, source, destination=None):
         items = set()
         try:
             items.update(item_or_items)
@@ -113,7 +103,8 @@ class StateMutator(object):
             items.add(item_or_items)
         items = items & source
         if items:
-            destination.update(items)
+            if destination is not None:
+                destination.update(items)
             source.difference_update(items)
         return items
 
@@ -129,11 +120,41 @@ class StateMutator(object):
             self.anounce('drops %s on the ground.' % pretty_list(items))
         return items
 
+    def eat(self, item_or_items):
+        items = self._relocate(item_or_items, self.actor.bag)
+        if items:
+            self.anounce('eats %s.' % pretty_list(items))
+        return items
+
     def produce(self, means):
         fruit = means.produce()
         self.anounce('%ss %s.' % (means.verb, fruit.name))
         self.actor.bag.add(fruit)
         return fruit
+
+
+class Npc(ActorState):
+    mutator_class = StateMutator
+
+
+class PeasantMutator(StateMutator):
+    def act(self):
+        edibles = (item for item in self.location.items if isinstance(item, Vegetable))
+        if self.pick(edibles):
+            return  # end cycle
+
+        edibles = (item for item in self.actor.bag if isinstance(item, Vegetable))
+        self.eat(edibles)
+
+
+class PeasantState(Npc):
+    mutator_class = PeasantMutator
+    name = 'a peasant'
+    descr = 'a hungry and lazy peasant'
+
+
+class UnknownChatflowCommand(Exception):
+    pass
 
 
 class Chatflow(StateMutator):
@@ -152,7 +173,7 @@ class Chatflow(StateMutator):
                 try:
                     result = self.dispatch(command, *args)
                     self.reply(result)
-                except UnknownStateMutatorCommand:
+                except UnknownChatflowCommand:
                     if not 'answered' in self.actor.input:
                         self.reply("Unknown command. Send %shelp for list of commands"
                                    % self.command_prefix)
@@ -182,10 +203,10 @@ class Chatflow(StateMutator):
         bag = sorted(bag, key=lambda item: item.name)
 
         def prompt():
+            all_msg = " or %s %sall" % (command, self.command_prefix) if all_ else str()
+            yield "Please choose what to %s%s:" % (command, all_msg)
             for n, item in enumerate(bag):
                 yield "%s%d. %s" % (self.command_prefix, n + 1, item.name)
-            all_msg = " or %s %sall" % (command, self.command_prefix) if all_ else str()
-            yield "Please enter a number from 1 to %d%s." % (len(bag), all_msg)
             self.actor.input.clear()
             self.actor.input.update(command=command)
 
@@ -225,6 +246,13 @@ class Chatflow(StateMutator):
         return command, handler
 
 
+    def dispatch(self, command, *args, **kwargs):
+        for cmd, handler in self.get_commands():
+            if cmd == command:
+                return handler(*args, **kwargs)
+        raise UnknownChatflowCommand
+
+
     def get_commands(self):
         yield 'help', self.help
 
@@ -238,23 +266,29 @@ class Chatflow(StateMutator):
 
             yield 'where', lambda: self.where(verb="are still")
 
+            for means in self.location.means:
+                yield means.verb, lambda: self.produce(means)
+
+            for l in self.actor.location.exits.keys():
+                yield l, lambda: self.go(l)
+
+            if self.location.items:
+                yield self.choice('pick', self.pick, self.location.items, all_=True)
+                if len(self.location.items) > 1:
+                    yield 'collect', lambda: self.pick(self.location.items)
+
             if self.actor.bag:
                 yield 'bag', self.bag
+                yield self.choice('drop', self.drop, self.actor.bag, all_=True)
+
+                edibles = set(item for item in self.actor.bag if isinstance(item, Vegetable))
+                if edibles:
+                    yield self.choice('eat', self.eat, edibles)
             else:
-                yield 'bag', lambda: 'Your bag is empty.'
-
-            for cmd, f in super(Chatflow, self).get_commands():
-                if cmd == 'drop':
-                    yield self.choice(cmd, f, self.actor.bag, all_=True)
-
-                elif cmd == 'pick':
-                    yield self.choice(cmd, f, self.location.items, all_=True)
-
-                    if len(self.location.items) > 1:
-                        yield 'collect', lambda: self.pick(self.location.items)
-
+                if self.actor.coins:
+                    yield 'bag', lambda: 'Your bag is empty. You have %d coins.' % self.actor.coins
                 else:
-                    yield cmd, f
+                    yield 'bag', lambda: 'Your bag is empty and you have no coins.'
 
             return
 
@@ -288,10 +322,7 @@ class Chatflow(StateMutator):
     def start(self):
         if self.actor.name is None:
             return chain(self.welcome(), self.name())
-        self.actor.alive = True
-        self.actor.location = StartLocation
-        self.anounce('materializes.')
-        self.location.actors.add(self.actor)
+        self.spawn(StartLocation)
         return self.where(verb="wake up")
 
 
@@ -330,34 +361,42 @@ class Chatflow(StateMutator):
 
     def pick(self, item_or_items):
         items = super(Chatflow, self).pick(item_or_items)
-        message = "You put %s into your %sbag."
-        if len(items) == 1:
-            item, = items
-            yield message % (item.name, self.command_prefix)
-        else:
-            yield message % (pretty_list(items), self.command_prefix)
+        yield "You put %s into your %sbag." % (pretty_list(items), self.command_prefix)
 
 
     def drop(self, item_or_items):
         items = super(Chatflow, self).drop(item_or_items)
-        message = "You drop %s on the ground."
-        if len(items) == 1:
-            item, = items
-            yield message % item.name
-        else:
-            yield message % pretty_list(items)
+        yield "You drop %s on the ground." % pretty_list(items)
+
+
+    def eat(self, item_or_items):
+        items = super(Chatflow, self).eat(item_or_items)
+        yield "You eat %s." % pretty_list(items)
 
 
     def bag(self):
+        coins_message = None
+        if self.actor.coins:
+            coins_message = "You have %d coins." % self.actor.coins
+        else:
+            coins_message = "You have no coins."
+
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
-            yield "In your bag there's nothing but %s. You can %sdrop it" \
+            yield "In your bag there's nothing but %s. You can %sdrop it." \
                   % (item.name, self.command_prefix)
+            yield coins_message
         else:
             yield "You look into your bag and see:"
+            seen_veggies = False
             for n, item in enumerate(sorted(self.actor.bag, key=lambda item: item.name)):
-                yield "%d. %s" % (n + 1, item.name)
-            yield "You can %sdrop [number]." % (self.command_prefix)
+                item_str = "%d. %s" % (n + 1, item.name)
+                if isinstance(item, Vegetable) and not seen_veggies:
+                    item_str += ", you can %seat it" % self.command_prefix
+                    seen_veggies = True
+                yield item_str
+            yield coins_message
+            yield "You can %sdrop [number]." % self.command_prefix
 
 
     def die(self):
@@ -382,21 +421,26 @@ if __name__ == '__main__':
     def observe(msg):
         print fore.BLUE + msg + style.RESET
 
-    player = PlayerState(send_callback=output)
-    observer = PlayerState(send_callback=observe)
-
     world = defaultdict(WorldState)
-    world[StartLocation.id].actors.update([player, observer])
     world[StartLocation.id].means.add(Land())
     world[StartLocation.id].items.update([Vegetable(), Cotton()])
 
+    player = PlayerState(send_callback=output)
     player.name = 'Andrey'
     player.bag.update([Vegetable(), Cotton()])
-    player.location = StartLocation
-    player.alive = True
-    s = '/where'
+    Chatflow(player, world).start()
 
-    # s = '/start'
+    observer = PlayerState(send_callback=observe)
+    Chatflow(player, world).spawn(StartLocation)
+    observer.name = 'A silent observer'
+
+    peasant = PeasantState()
+    StateMutator(peasant, world).spawn(StartLocation)
+
+    player.alive = True
+    # s = '/where'
+
+    s = '/start'
     while True:
         chatflow = Chatflow(player, world, command_prefix='/')
         chatflow.process_message(s)
@@ -407,4 +451,5 @@ if __name__ == '__main__':
         except (EOFError, KeyboardInterrupt):
             break
 
+        peasant.mutator_class(peasant, world).act()
 

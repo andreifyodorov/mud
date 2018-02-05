@@ -1,7 +1,7 @@
 from itertools import chain
 from redis import StrictRedis
 
-from chatflow import State, PlayerState, WorldState, Chatflow
+from chatflow import State, Npc, PlayerState, WorldState, Chatflow
 from locations import Location
 from production import MeansOfProduction, Land
 from commodities import Commodity, Vegetable
@@ -33,10 +33,10 @@ class Storage(object):
         self.world = {}
         for location_id in Location.all.iterkeys():
             state = WorldState()
+            self.world[location_id] = state
             serialized = redis.get(LOCATION_KEY % location_id)
             if serialized is not None:
                 self.deserialize_state(state, serialized)
-            self.world[location_id] = state
 
 
     def get_player_state(self, chatkey):
@@ -93,14 +93,14 @@ class Storage(object):
             else:
                 o = None
                 subclasses = chain.from_iterable(
-                    c.__subclasses__() for c in (Commodity, MeansOfProduction))
+                    c.__subclasses__() for c in (Npc, Commodity, MeansOfProduction))
                 for subcls in subclasses:
                     if subcls.__name__ == cls:
                         o = subcls()
                         break
                 if isinstance(arg, dict):
-                    for k, v in arg:
-                        setattr(o, k, v)
+                    for k, v in arg.iteritems():
+                        setattr(o, k, self.deserialize(v))
                 return o
         elif isinstance(v, list):
             return [self.deserialize(o) for o in v]
@@ -124,6 +124,8 @@ class Storage(object):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
+        elif isinstance(o, Npc):
+            return (o.__class__.__name__, self.serialize_state(o))
         elif isinstance(o, (Commodity, MeansOfProduction)):
             return (o.__class__.__name__, o.__dict__)
         elif isinstance(o, (set, list)):
@@ -137,9 +139,16 @@ class Storage(object):
         for prefix, chatkey in keys:
             yield self.get_player_state(self.chatkey_type(chatkey))
 
+
+    def all_npcs(self):
+        for location in self.world.values():
+            for actor in location.actors:
+                if isinstance(actor, Npc):
+                    yield actor
+
     @property
     def version(self):
-        return self.redis.get('version')
+        return int(self.redis.get('version'))
 
     @version.setter
     def version(self, value):

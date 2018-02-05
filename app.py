@@ -8,6 +8,7 @@ from storage import Storage
 
 import settings
 
+
 bot.setWebhook(url='https://%s/%s' % (settings.WEBHOOK_HOST, settings.TOKEN),
                certificate=open(settings.CERT, 'rb'))
 # print bot.getWebhookInfo()
@@ -29,3 +30,20 @@ def webhook():
         storage.save()
 
     return 'OK'
+
+
+def npcs_acts():
+    storage = Storage(bot.send_callback_factory)
+    npcs = storage.all_npcs
+    for npc in set(npcs):
+        npc.mutator_class(npc, storage.world).act()
+    storage.save()
+
+
+try:
+    import uwsgi
+except:
+    pass
+else:
+    uwsgi.register_signal(30, "worker", npcs_acts)
+    uwsgi.add_timer(30, 5)

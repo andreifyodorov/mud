@@ -2,7 +2,7 @@
 
 from bot import bot
 from storage import Storage
-from chatflow import Chatflow
+from chatflow import Chatflow, PeasantState
 from locations import Field
 from production import Land
 
@@ -22,7 +22,15 @@ def migrate_1(storage):
         storage.world[Field.id].means.add(Land())
 
 
-migrations = [migrate_1]
+def migrate_2(storage):
+    for player in storage.all_players():
+        player.send("Game updated to version 2. Welcome a hungry and lazy peasant!")
+
+    peasant = PeasantState()
+    peasant.mutator_class(peasant, storage.world).spawn(Field)
+
+
+migrations = [migrate_1, migrate_2]
 
 
 def dry_send_callback_factory(chatkey):
@@ -41,6 +49,7 @@ def migrate(dry_run=True):
         print "No worries, it's a dry run"
 
     version = version or 0
+    print "Current version is %d" % version
     while len(migrations) > version:
         print "Migrating storage from version %d to %d" % (version, version + 1)
         migrations[version](storage)
