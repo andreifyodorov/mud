@@ -1,157 +1,5 @@
-#!/usr/bin/env python
-
-from locations import StartLocation
-from commodities import Vegetable, Cotton
-from production import Land
-from itertools import chain
-
-
-class State(object):
-    pass
-
-
-class ActorState(State):
-    def __init__(self):
-        super(ActorState, self).__init__()
-        self.alive = False
-        self.location = None
-        self.bag = set()
-        self.coins = 0
-
-
-class PlayerState(ActorState):
-
-    def __init__(self, send_callback):
-        super(PlayerState, self).__init__()
-        self.send = send_callback or (lambda message: None)
-        self.confirm = {}
-        self.input = {}
-        self.name = None
-
-    @property
-    def descr(self):
-        return '%s (player)' % self.name
-
-
-class WorldState(State):
-    def __init__(self):
-        super(WorldState, self).__init__()
-        self.items = set()
-        self.actors = set()
-        self.means = set()
-
-    def broadcast(self, message, skip_sender=None):
-        for actor in self.actors:
-            if skip_sender is not None and actor is skip_sender:
-                continue
-            if isinstance(actor, PlayerState):
-                actor.send(message.capitalize())
-
-
-def pretty_list(items):
-    items = sorted(items, key=lambda item: item.name)
-    if len(items) == 0:
-        return 'nothing'
-    if len(items) == 1:
-        item, = items
-        return item.name
-    return "%s and %s" % (', '.join(i.name for i in items[:-1]), items[-1].name)
-
-
-class StateMutator(object):
-    def __init__(self, actor, world):
-        self.actor = actor
-        self.world = world
-
-    @property
-    def location(self):
-        return self.world[self.actor.location.id]
-
-    def anounce(self, message):
-        self.location.broadcast("%s %s" % (self.actor.name, message), skip_sender=self.actor)
-
-    def spawn(self, location):
-        if not self.actor.location and not self.actor.alive:
-            self.actor.alive = True
-            self.actor.location = location
-            self.location.actors.add(self.actor)
-            self.anounce('materializes.')
-
-    def die(self):
-        if self.actor.alive:
-            self.anounce('dies.')
-            self.location.actors.remove(self.actor)
-            self.location.items.update(self.actor.bag)
-            self.actor.bag.clear()
-            self.actor.location = None
-            self.actor.alive = False
-
-    def go(self, direction):
-        old = self.actor.location
-        new = self.actor.location.exits[direction]['location']
-        self.anounce('leaves to %s.' % new.name)
-        self.location.actors.remove(self.actor)
-        self.actor.location = new
-        self.anounce('arrives from %s.' % old.name)
-        self.location.actors.add(self.actor)
-
-    def _relocate(self, item_or_items, source, destination=None):
-        items = set()
-        try:
-            items.update(item_or_items)
-        except TypeError:
-            items.add(item_or_items)
-        items = items & source
-        if items:
-            if destination is not None:
-                destination.update(items)
-            source.difference_update(items)
-        return items
-
-    def pick(self, item_or_items):
-        items = self._relocate(item_or_items, self.location.items, self.actor.bag)
-        if items:
-            self.anounce('picks up %s.' % pretty_list(items))
-        return items
-
-    def drop(self, item_or_items):
-        items = self._relocate(item_or_items, self.actor.bag, self.location.items)
-        if items:
-            self.anounce('drops %s on the ground.' % pretty_list(items))
-        return items
-
-    def eat(self, item_or_items):
-        items = self._relocate(item_or_items, self.actor.bag)
-        if items:
-            self.anounce('eats %s.' % pretty_list(items))
-        return items
-
-    def produce(self, means):
-        fruit = means.produce()
-        self.anounce('%ss %s.' % (means.verb, fruit.name))
-        self.actor.bag.add(fruit)
-        return fruit
-
-
-class Npc(ActorState):
-    mutator_class = StateMutator
-
-
-class PeasantMutator(StateMutator):
-    def act(self):
-        edibles = (item for item in self.location.items if isinstance(item, Vegetable))
-        if self.pick(edibles):
-            return  # end cycle
-
-        edibles = (item for item in self.actor.bag if isinstance(item, Vegetable))
-        self.eat(edibles)
-
-
-class PeasantState(Npc):
-    mutator_class = PeasantMutator
-    name = 'a peasant'
-    descr = 'a hungry and lazy peasant'
-
+from .mutators import pretty_list, StateMutator
+from .commodities import Vegetable
 
 class UnknownChatflowCommand(Exception):
     pass
@@ -355,8 +203,8 @@ class Chatflow(StateMutator):
 
 
     def go(self, direction):
-        super(Chatflow, self).go(direction)
-        return self.where()
+        if super(Chatflow, self).go(direction):
+            return self.where()
 
 
     def pick(self, item_or_items):
@@ -406,50 +254,8 @@ class Chatflow(StateMutator):
 
     def produce(self, means):
         fruit = super(Chatflow, self).produce(means)
-        return "You %s %s. You put it into a %sbag." % (means.verb, fruit.name, self.command_prefix)
-
-
-if __name__ == '__main__':
-    from colored import fore, style
-    import re
-    from collections import defaultdict
-
-    def output(msg):
-        msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
-        print fore.YELLOW + msg + style.RESET
-
-    def observe(msg):
-        print fore.BLUE + msg + style.RESET
-
-    world = defaultdict(WorldState)
-    world[StartLocation.id].means.add(Land())
-    world[StartLocation.id].items.update([Vegetable(), Cotton()])
-
-    player = PlayerState(send_callback=output)
-    player.name = 'Andrey'
-    player.bag.update([Vegetable(), Cotton()])
-    Chatflow(player, world).start()
-
-    observer = PlayerState(send_callback=observe)
-    Chatflow(player, world).spawn(StartLocation)
-    observer.name = 'A silent observer'
-
-    peasant = PeasantState()
-    StateMutator(peasant, world).spawn(StartLocation)
-
-    player.alive = True
-    # s = '/where'
-
-    s = '/start'
-    while True:
-        chatflow = Chatflow(player, world, command_prefix='/')
-        chatflow.process_message(s)
-
-        try:
-            # s = raw_input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
-            s = raw_input('%s> ' % player.input)
-        except (EOFError, KeyboardInterrupt):
-            break
-
-        peasant.mutator_class(peasant, world).act()
-
+        if fruit is None:
+            return "You fail to %s anything." % means.verb
+        else:
+            return "You %s %s. You put it into your %sbag." \
+                   % (means.verb, fruit.name, self.command_prefix)

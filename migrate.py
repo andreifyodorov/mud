@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
+from mud.chatflow import Chatflow
+from mud.locations import Field, TownGate
+from mud.production import Land
+from mud.npcs import PeasantState, GuardState
+
 from bot import bot
 from storage import Storage
-from chatflow import Chatflow, PeasantState
-from locations import Field
-from production import Land
 
 
 def migrate_1(storage):
@@ -30,7 +32,19 @@ def migrate_2(storage):
     peasant.mutator_class(peasant, storage.world).spawn(Field)
 
 
-migrations = [migrate_1, migrate_2]
+def migrate_3(storage):
+    for player in storage.all_players():
+        player.send(
+            "Game updated to version 3. Changes:\n"\
+            "* New locations: a town gate, a market square.\n"
+            "* New NPC: a guard.\n"
+            "* Cotton is now more rare")
+
+    peasant = GuardState()
+    peasant.mutator_class(peasant, storage.world).spawn(TownGate)
+
+
+migrations = [migrate_1, migrate_2, migrate_3]
 
 
 def dry_send_callback_factory(chatkey):
@@ -55,11 +69,11 @@ def migrate(dry_run=True):
         migrations[version](storage)
         version += 1
 
+    storage.version = version
     if dry_run:
         storage.print_dump()
         storage.lock_object.release()
     else:
-        storage.version = version
         storage.save()
 
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 class Location(object):
     all = {}
 
@@ -37,3 +35,32 @@ Village.add_exit(
     descr='To the %s you see a field.',
     location=Field)
 
+TownGate = Location(
+    id='loc_gate',
+    name='a town gate',
+    descr='at a town gate.')
+
+Village.add_exit(
+    direction='north',
+    descr='To the %s you see a town wall. A road leads to a gate.',
+    location=TownGate)
+
+TownGate.add_exit(
+    direction='south',
+    descr='To the %s you see a village.',
+    location=Village)
+
+MarketSquare = Location(
+    id='loc_market_square',
+    name='a market square',
+    descr='on a market square.')
+
+TownGate.add_exit(
+    direction='north',
+    descr='Through a gate to the %s you see a market square.',
+    location=MarketSquare)
+
+MarketSquare.add_exit(
+    direction='south',
+    descr='To the %s you see a gate that leads outside the city.',
+    location=TownGate)

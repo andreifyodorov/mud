@@ -3,7 +3,7 @@
 from flask import Flask, request
 
 from bot import telegram, bot
-from chatflow import Chatflow
+from mud import Chatflow
 from storage import Storage
 
 import settings
@@ -32,11 +32,9 @@ def webhook():
     return 'OK'
 
 
-def npcs_acts():
+def enact(*args):
     storage = Storage(bot.send_callback_factory)
-    npcs = storage.all_npcs
-    for npc in set(npcs):
-        npc.mutator_class(npc, storage.world).act()
+    storage.world.enact()
     storage.save()
 
 
@@ -45,5 +43,5 @@ try:
 except:
     pass
 else:
-    uwsgi.register_signal(30, "worker", npcs_acts)
+    uwsgi.register_signal(30, "worker", enact)
     uwsgi.add_timer(30, 5)

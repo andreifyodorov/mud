@@ -1,10 +1,11 @@
 from itertools import chain
 from redis import StrictRedis
 
-from chatflow import State, Npc, PlayerState, WorldState, Chatflow
-from locations import Location
-from production import MeansOfProduction, Land
-from commodities import Commodity, Vegetable
+from mud.states import State, PlayerState, World
+from mud.npcs import NpcState
+from mud.locations import Location
+from mud.production import MeansOfProduction, Land
+from mud.commodities import Commodity, Vegetable
 
 import settings
 
@@ -29,14 +30,17 @@ class Storage(object):
 
         self.lock_object = redis.lock('global_lock', timeout=2)
         self.lock_object.acquire()
+        self.version = int(self.redis.get('version') or 0)
+        self.world = World()
 
-        self.world = {}
+        serialized_world = redis.get('world')
+        if serialized_world:
+            self.deserialize_state(self.world, eval(serialized_world))
+
         for location_id in Location.all.iterkeys():
-            state = WorldState()
-            self.world[location_id] = state
             serialized = redis.get(LOCATION_KEY % location_id)
             if serialized is not None:
-                self.deserialize_state(state, serialized)
+                self.deserialize_state(self.world[location_id], eval(serialized))
 
 
     def get_player_state(self, chatkey):
@@ -47,7 +51,7 @@ class Storage(object):
 
         serialized = self.redis.get(PLAYER_KEY % chatkey)
         if serialized is not None:
-            self.deserialize_state(player, serialized)
+            self.deserialize_state(player, eval(serialized))
 
         self.chatkeys[player] = chatkey
         self.players[chatkey] = player
@@ -59,6 +63,8 @@ class Storage(object):
             yield "player:%s" % chatkey, repr(self.serialize_state(state))
         for location_id, state in self.world.iteritems():
             yield "location:%s" % location_id, repr(self.serialize_state(state))
+        yield "world", repr(self.serialize_state(self.world))
+        yield "version", self.version
 
 
     def save(self):
@@ -72,8 +78,7 @@ class Storage(object):
             print "%s\t%s" % (k, v)
 
 
-    def deserialize_state(self, state, serialized):
-        data = eval(serialized)
+    def deserialize_state(self, state, data):
         for k, v in data.iteritems():
             o = self.deserialize(v)
             attr = getattr(state, k, None)
@@ -93,14 +98,13 @@ class Storage(object):
             else:
                 o = None
                 subclasses = chain.from_iterable(
-                    c.__subclasses__() for c in (Npc, Commodity, MeansOfProduction))
+                    c.__subclasses__() for c in (NpcState, Commodity, MeansOfProduction))
                 for subcls in subclasses:
                     if subcls.__name__ == cls:
                         o = subcls()
                         break
                 if isinstance(arg, dict):
-                    for k, v in arg.iteritems():
-                        setattr(o, k, self.deserialize(v))
+                    self.deserialize_state(o, arg)
                 return o
         elif isinstance(v, list):
             return [self.deserialize(o) for o in v]
@@ -124,7 +128,7 @@ class Storage(object):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
-        elif isinstance(o, Npc):
+        elif isinstance(o, NpcState):
             return (o.__class__.__name__, self.serialize_state(o))
         elif isinstance(o, (Commodity, MeansOfProduction)):
             return (o.__class__.__name__, o.__dict__)
@@ -141,16 +145,4 @@ class Storage(object):
 
 
     def all_npcs(self):
-        for location in self.world.values():
-            for actor in location.actors:
-                if isinstance(actor, Npc):
-                    yield actor
-
-    @property
-    def version(self):
-        return int(self.redis.get('version'))
-
-    @version.setter
-    def version(self, value):
-        self.redis.set('version', value)
-
+        return self.world.all_npc()

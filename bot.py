@@ -10,7 +10,7 @@ class Bot(telegram.Bot):
 
     def send_callback_factory(self, chatkey):
         def callback(msg):
-            self.sendMessage(chat_id=chatkey, text=msg)
+            self.sendMessage(chat_id=chatkey, text=msg, parse_mode="Markdown")
         return callback
 
 
