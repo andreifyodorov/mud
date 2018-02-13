@@ -1,5 +1,6 @@
 from itertools import chain
 from redis import StrictRedis
+import pprint
 
 from mud.states import State, PlayerState, World
 from mud.npcs import NpcState
@@ -60,22 +61,22 @@ class Storage(object):
 
     def dump(self):
         for chatkey, state in self.players.iteritems():
-            yield "player:%s" % chatkey, repr(self.serialize_state(state))
+            yield "player:%s" % chatkey, self.serialize_state(state)
         for location_id, state in self.world.iteritems():
-            yield "location:%s" % location_id, repr(self.serialize_state(state))
-        yield "world", repr(self.serialize_state(self.world))
+            yield "location:%s" % location_id, self.serialize_state(state)
+        yield "world", self.serialize_state(self.world)
         yield "version", self.version
 
 
     def save(self):
         for k, v in self.dump():
-            self.redis.set(k, v)
+            self.redis.set(k, repr(v))
         self.lock_object.release()
 
 
     def print_dump(self):
         for k, v in self.dump():
-            print "%s\t%s" % (k, v)
+            print "%s\t%s" % (k, pprint.pformat(v))
 
 
     def deserialize_state(self, state, data):
@@ -118,7 +119,7 @@ class Storage(object):
             if isinstance(o, (dict, set)) and not o:
                 continue
             v = self.serialize(o)
-            if v is not None:
+            if v is not None and v is not False:
                 serialized[k] = v
         return serialized
 
@@ -145,4 +146,4 @@ class Storage(object):
 
 
     def all_npcs(self):
-        return self.world.all_npc()
+        return self.world.all_npcs()

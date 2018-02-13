@@ -1,11 +1,47 @@
-def pretty_list(items):
-    items = sorted(items, key=lambda item: item.name)
+from itertools import groupby, islice, chain
+
+
+def pretty_list(item_or_items):
+    if hasattr(item_or_items, 'name'):
+        return item_or_items.name
+
+    items = item_or_items
+
     if len(items) == 0:
         return 'nothing'
+
     if len(items) == 1:
         item, = items
         return item.name
-    return "%s and %s" % (', '.join(i.name for i in items[:-1]), items[-1].name)
+
+    items = sorted(items, key=lambda item: item.name)
+    names = list(pretty_names(items))
+
+    if len(names) == 1:
+        name, = names
+        return name
+
+    return "%s and %s" % (', '.join(n for n in names[:-1]), names[-1])
+
+
+def pretty_names(items):
+    for name, group in groupby(items, lambda i: i.name):
+        group = list(group)
+
+        if len(group) == 1:
+            item, = group
+            yield item.name
+            continue
+
+        for item in group:
+            if hasattr(item, 'plural'):
+                l = len(list(group))
+                if callable(item.plural):
+                    yield item.plural(l)
+                else:
+                    yield item.plural % l
+                break
+            yield item.name
 
 
 class ExitGuardMixin(object):
@@ -23,6 +59,9 @@ class StateMutator(object):
 
     def anounce(self, message):
         self.location.broadcast("%s %s" % (self.actor.name, message), skip_sender=self.actor)
+
+    def say_to(self, actor, message):
+        actor.send("*%s*: %s" % (self.actor.Name, message))
 
     def spawn(self, location):
         if not self.actor.location and not self.actor.alive:
@@ -56,14 +95,14 @@ class StateMutator(object):
         self.location.actors.add(self.actor)
         return True
 
-    def _relocate(self, item_or_items, source, destination=None):
+    def _relocate(self, item_or_items, source, destination=None, dry=False):
         items = set()
         try:
             items.update(item_or_items)
         except TypeError:
             items.add(item_or_items)
         items = items & source
-        if items:
+        if items and not dry:
             if destination is not None:
                 destination.update(items)
             source.difference_update(items)
@@ -87,13 +126,65 @@ class StateMutator(object):
             self.anounce('eats %s.' % pretty_list(items))
         return items
 
-    def produce(self, means):
+    def wear(self, item):
+        if self.actor.wears is not None:
+            self.actor.bag.add(self.actor.wears)
+        items = self._relocate(item, self.actor.bag)
+        if items:
+            self.actor.wears, = items
+        return items
+
+    def barter(self, counterparty, what, for_what):
+        if (counterparty.barters
+                and counterparty.get_mutator(self.world).accept_barter(self.actor, what, for_what)):
+            self.anounce('barters %s for %s with %s.'
+                         % (pretty_list(what), pretty_list(for_what), counterparty.name))
+            return True
+        return False
+
+    def accept_barter(self, counterparty, what, for_what):
+        self._relocate(what, counterparty.bag, self.actor.bag)
+        self._relocate(for_what, self.actor.bag, counterparty.bag)
+        return True
+
+    def _items_by_class(self, cls):
+        return (i for i in self.actor.bag if isinstance(i, cls))
+
+
+    def produce(self, means, missing=None):
+        if missing is None:
+            missing = []
+        # get required/optional tools
+        tools = {}
+        for t in means.optional_tools | means.required_tools:
+            tool = next(self._items_by_class(t), None)
+            if tool:
+                tools[t] = tool
+            elif t in means.required_tools:
+                missing.append(t)
+        # get required materials
+        materials = {}
+        for t, n in means.required_materials.iteritems():
+            l = list(self._items_by_class(t))
+            if len(l) >= n:
+                materials[t] = l[:n]
+            else:
+                missing.extend([t] * (n - len(l)))
+        # do we miss something?
+        if missing:
+            return
+        # not too often
         if self.actor.last_success_time == self.world.time:
             return
-        fruit = means.produce()
+        # remove materials from the world
+        self._relocate(chain.from_iterable(materials.itervalues()), self.actor.bag)
+        # be fruitful
+        fruit = means.produce(tools, materials)
         if fruit is None:
             return
+
         self.actor.last_success_time = self.world.time
         self.anounce('%ss %s.' % (means.verb, fruit.name))
         self.actor.bag.add(fruit)
+
         return fruit

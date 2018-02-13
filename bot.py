@@ -1,9 +1,11 @@
+from mud.chatflow import CommandPrefix
+
 import telegram
 import settings
 
 
 class Bot(telegram.Bot):
-    command_prefix = '/'
+    cmd_pfx = CommandPrefix('/')
 
     def __init__(self, *args, **kwargs):
         super(Bot, self).__init__(settings.TOKEN, *args, **kwargs)

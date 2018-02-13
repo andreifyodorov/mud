@@ -1,50 +1,77 @@
 #!/usr/bin/env python
 
 from mud.chatflow import Chatflow
-from mud.locations import Field, TownGate
-from mud.production import Land
+from mud.locations import Field, TownGate, VillageHouse
+from mud.production import Land, Distaff
+from mud.states import PlayerState
 from mud.npcs import PeasantState, GuardState
+from mud.commodities import Spindle, DirtyRags, RoughspunTunic, Overcoat
 
 from bot import bot
 from storage import Storage
 
 
+migrations = list()
+
+def version(f):
+    migrations.append(f)
+    return f
+
+
+@version
 def migrate_1(storage):
     for player in storage.all_players():
         player.send("Game updated to version 1. Sorry for killing everyone, guys")
 
-        mutator = Chatflow(player, storage.world, bot.command_prefix)
+        mutator = Chatflow(player, storage.world, bot.cmd_pfx)
 
         if player.name == 'Player':
             mutator.die()
             player.name = None
-            mutator.process_message('%sstart' % bot.command_prefix)
+            mutator.process_message('%sstart' % bot.cmd_pfx)
 
     if not storage.world[Field.id].means:
         storage.world[Field.id].means.add(Land())
 
 
+@version
 def migrate_2(storage):
     for player in storage.all_players():
         player.send("Game updated to version 2. Welcome a hungry and lazy peasant!")
 
     peasant = PeasantState()
-    peasant.mutator_class(peasant, storage.world).spawn(Field)
+    peasant.get_mutator(storage.world).spawn(Field)
 
 
+@version
 def migrate_3(storage):
     for player in storage.all_players():
         player.send(
-            "Game updated to version 3. Changes:\n"\
+            "Game updated to version 3. Changes:\n"
             "* New locations: a town gate, a market square.\n"
             "* New NPC: a guard.\n"
             "* Cotton is now more rare")
 
-    peasant = GuardState()
-    peasant.mutator_class(peasant, storage.world).spawn(TownGate)
+    guard = GuardState()
+    guard.get_mutator(storage.world).spawn(TownGate)
 
 
-migrations = [migrate_1, migrate_2, migrate_3]
+@version
+def migrate_4(storage):
+    for actor in storage.all_players():
+        actor.wears = DirtyRags()
+
+    for actor in storage.all_npcs():
+        if isinstance(actor, PeasantState):
+            actor.wears = RoughspunTunic()
+            actor.bag.add(Spindle())
+
+        if isinstance(actor, GuardState):
+            actor.name = "gate guard"
+            actor.wears = Overcoat()
+
+    if not storage.world[VillageHouse.id].means:
+        storage.world[VillageHouse.id].means.add(Distaff())
 
 
 def dry_send_callback_factory(chatkey):

@@ -35,6 +35,21 @@ Village.add_exit(
     descr='To the %s you see a field.',
     location=Field)
 
+VillageHouse = Location(
+    id='loc_v_house',
+    name='a log house',
+    descr="inside a peasant house.")
+
+Village.add_exit(
+    direction='enter',
+    descr="You see a group of log houses. You can %s one of them.",
+    location=VillageHouse)
+
+VillageHouse.add_exit(
+    direction='exit',
+    descr="You can %s a house.",
+    location=Village)
+
 TownGate = Location(
     id='loc_gate',
     name='a town gate',

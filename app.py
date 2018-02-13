@@ -25,7 +25,7 @@ def webhook():
 
     if message is not None:
         storage = Storage(bot.send_callback_factory)
-        chatflow = Chatflow(storage.get_player_state(chatkey), storage.world, bot.command_prefix)
+        chatflow = Chatflow(storage.get_player_state(chatkey), storage.world, bot.cmd_pfx)
         chatflow.process_message(message)
         storage.save()
 

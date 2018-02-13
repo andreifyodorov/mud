@@ -19,12 +19,12 @@ class World(dict):
             value = self[key] = WorldState()
         return value
 
+    def all_npcs(self):
+        return (a for l in self.values() for a in l.actors if isinstance(a, NpcMixin))
+
     def enact(self):
         self.time = self.time or 0
-        npcs = (
-            a for location in self.values() for a in location.actors if isinstance(a, NpcMixin))
-
-        for npc in set(npcs):
+        for npc in set(self.all_npcs()):
             npc.get_mutator(self).act()
         self.time += 1
 
@@ -34,23 +34,28 @@ class State(object):
 
 
 class ActorState(State):
-    def __init__(self):
+    def __init__(self, name=None):
         super(ActorState, self).__init__()
+        if not hasattr(self, 'name'):
+            self.name = name
         self.alive = False
         self.location = None
         self.bag = set()
         self.coins = 0
+        self.wears = None
         self.last_success_time = 0
+
+    @property
+    def Name(self):
+        return self.name[0].upper() + self.name[1:]  # works better than capitalize
 
 
 class PlayerState(ActorState):
-
     def __init__(self, send_callback):
         super(PlayerState, self).__init__()
         self.send = send_callback or (lambda message: None)
-        self.confirm = {}
         self.input = {}
-        self.name = None
+        self.chain = {}
 
     @property
     def descr(self):
@@ -63,6 +68,10 @@ class WorldState(State):
         self.items = set()
         self.actors = set()
         self.means = set()
+
+    @property
+    def npcs(self):
+        return (a for a in self.actors if isinstance(a, NpcMixin))
 
     def broadcast(self, message, skip_sender=None):
         for actor in self.actors:
