@@ -1,4 +1,7 @@
+from itertools import chain
+
 from .mutators import pretty_list, StateMutator
+from .locations import StartLocation
 from .commodities import Vegetable
 
 class UnknownChatflowCommand(Exception):
