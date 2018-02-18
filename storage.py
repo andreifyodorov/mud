@@ -13,6 +13,7 @@ import settings
 
 PLAYER_KEY = "player:%s"
 LOCATION_KEY = "location:%s"
+ENTITY_KEY = "entity:%s:%s"
 
 
 redis = StrictRedis(**settings.REDIS)
@@ -22,6 +23,8 @@ if settings.IS_PLAYGROUND:
 
 
 class Storage(object):
+    entity_classes = (NpcState, Commodity, MeansOfProduction)  # order matters
+
     def __init__(self, send_callback_factory, redis_=None, chatkey_type=None):
         self.send_callback_factory = send_callback_factory
         self.redis = redis_ or redis
@@ -29,14 +32,20 @@ class Storage(object):
         self.players = {}
         self.chatkeys = {}
 
+        self.entity_subclasses = [sc for c in self.entity_classes for sc in c.__subclasses__()]
+        self.entity_subclass_by_name = {sc.__name__: sc for sc in self.entity_subclasses}
+        self.entities = {classname: {} for classname in self.entity_subclass_by_name.iterkeys()}
+        self.entitykeys = {}
+
         self.lock_object = redis.lock('global_lock', timeout=2)
         self.lock_object.acquire()
         self.version = int(self.redis.get('version') or 0)
-        self.world = World()
 
+        world = World()
         serialized_world = redis.get('world')
         if serialized_world:
-            self.deserialize_state(self.world, eval(serialized_world))
+            self.deserialize_state(world, eval(serialized_world))
+        self.world = world
 
         for location_id in Location.all.iterkeys():
             serialized = redis.get(LOCATION_KEY % location_id)
@@ -59,11 +68,35 @@ class Storage(object):
         return player
 
 
+    def get_entity_state(self, classname, arg):
+        cls = self.entity_subclass_by_name.get(classname, None)
+        if cls is None:
+            return
+        entity = cls()
+        key = None
+        if isinstance(arg, int):
+            key = arg
+            self.entities[classname][key] = entity
+            serialized = self.redis.get(ENTITY_KEY % (classname, key))
+            if serialized is not None:
+                self.deserialize_state(entity, eval(serialized))
+        else:
+            self.deserialize_state(entity, arg)
+        self.entitykeys[entity] = key
+        return entity
+
+
     def dump(self):
         for chatkey, state in self.players.iteritems():
-            yield "player:%s" % chatkey, self.serialize_state(state)
+            yield PLAYER_KEY % chatkey, self.serialize_state(state)
         for location_id, state in self.world.iteritems():
-            yield "location:%s" % location_id, self.serialize_state(state)
+            yield LOCATION_KEY % location_id, self.serialize_state(state)
+        for cls in self.entity_subclasses:
+            classname = cls.__name__
+            for key, entity in self.entities[classname].iteritems():
+                serialized = self.serialize_state(entity)
+                if serialized:
+                    yield ENTITY_KEY % (classname, key), serialized
         yield "world", self.serialize_state(self.world)
         yield "version", self.version
 
@@ -97,18 +130,14 @@ class Storage(object):
             elif cls == 'PlayerState':
                 return self.get_player_state(arg)
             else:
-                o = None
-                subclasses = chain.from_iterable(
-                    c.__subclasses__() for c in (NpcState, Commodity, MeansOfProduction))
-                for subcls in subclasses:
-                    if subcls.__name__ == cls:
-                        o = subcls()
-                        break
-                if isinstance(arg, dict):
-                    self.deserialize_state(o, arg)
-                return o
+                return self.get_entity_state(cls, arg)
         elif isinstance(v, list):
             return [self.deserialize(o) for o in v]
+        elif isinstance(v, dict):
+            deserialized = {}
+            for key, val in v.iteritems():
+                deserialized[self.deserialize(key)] = self.deserialize(val)
+            return deserialized
         else:
             return v
 
@@ -124,18 +153,34 @@ class Storage(object):
         return serialized
 
 
+    def serialize_entity(self, entity):
+        classname = entity.__class__.__name__
+        key = self.entitykeys.get(entity, None)
+        if key is None:
+            if self.entities[classname]:
+                key = max(0, max(self.entities[classname].iterkeys())) + 1
+            else:
+                key = 1
+            self.entitykeys[entity] = key
+            self.entities[classname][key] = entity
+        return (classname, key)
+
+
     def serialize(self, o):
         if isinstance(o, Location):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
-        elif isinstance(o, NpcState):
-            return (o.__class__.__name__, self.serialize_state(o))
-        elif isinstance(o, (Commodity, MeansOfProduction)):
-            return (o.__class__.__name__, o.__dict__)
+        elif isinstance(o, self.entity_classes):
+            return self.serialize_entity(o)
         elif isinstance(o, (set, list)):
             return [self.serialize(x) for x in o]
-        elif isinstance(o, (basestring, int, float, bool, dict)):
+        elif isinstance(o, dict):
+            serialized = {}
+            for k, v in o.iteritems():
+                serialized[k] = self.serialize(v)
+            return serialized
+        elif isinstance(o, (basestring, int, float, bool)):
             return o
 
 
