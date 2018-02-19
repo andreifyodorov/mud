@@ -72,17 +72,22 @@ class Storage(object):
         cls = self.entity_subclass_by_name.get(classname, None)
         if cls is None:
             return
-        entity = cls()
+
         key = None
         if isinstance(arg, int):
             key = arg
+            if key in self.entities[classname]:
+                return self.entities[classname][key]
+
+        entity = cls()
+        if key:
             self.entities[classname][key] = entity
+            self.entitykeys[entity] = key
             serialized = self.redis.get(ENTITY_KEY % (classname, key))
             if serialized is not None:
                 self.deserialize_state(entity, eval(serialized))
         else:
             self.deserialize_state(entity, arg)
-        self.entitykeys[entity] = key
         return entity
 
 
@@ -148,7 +153,7 @@ class Storage(object):
             if isinstance(o, (dict, set)) and not o:
                 continue
             v = self.serialize(o)
-            if v is not None and v is not False:
+            if v is not None and v is not False and v != 0:
                 serialized[k] = v
         return serialized
 
