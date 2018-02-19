@@ -63,6 +63,7 @@ def migrate_4(storage):
 
     for actor in storage.all_npcs():
         if isinstance(actor, PeasantState):
+            actor.name = "Jack"
             actor.wears = RoughspunTunic()
             actor.bag.add(Spindle())
 
