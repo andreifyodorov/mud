@@ -21,5 +21,16 @@ pip install -r requirments.txt
 ssh -N -R 8080:localhost:5000 bakunin.nl &
 trap "kill %1" EXIT
 
-# run local server
-FLASK_APP=app.py FLASK_DEBUG=1 IS_PLAYGROUND=1 python -m flask run
+
+if [[ $1 == '--uwsgi' ]]; then
+	IS_PLAYGROUND=1 uwsgi \
+		--master \
+		--manage-script-name \
+		--mount /=app:app \
+		--http-socket localhost:5000 \
+		--plugin python \
+		--virtualenv $virtualenv
+else
+	# run local server
+	FLASK_APP=app.py FLASK_DEBUG=1 IS_PLAYGROUND=1 python -m flask run
+fi
