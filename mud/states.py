@@ -49,6 +49,10 @@ class ActorState(State):
     def Name(self):
         return self.name[0].upper() + self.name[1:]  # works better than capitalize
 
+    @property
+    def barters(self):
+        return len(self.bag) > 0
+
 
 class PlayerState(ActorState):
     def __init__(self, send_callback):

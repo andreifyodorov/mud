@@ -1,16 +1,73 @@
 from .states import ActorState, PlayerState, NpcMixin
 from .mutators import StateMutator, ExitGuardMixin
-from .commodities import Vegetable, DirtyRags, RoughspunTunic, Spindle
-from .locations import TownGate, MarketSquare
+from .commodities import Edibles, DirtyRags, RoughspunTunic, Spindle
+from .locations import Field, Village, VillageHouse, TownGate, MarketSquare
+
+
+class IsNotDoneYet(Exception):
+    pass
+
+
+class NpcMutator(StateMutator):
+    def set_counter(self, counter, value):
+        self.actor.counters[counter] = value
+
+    def dec_counter(self, counter):
+        value = self.actor.counters.get(counter, None)
+        if value is not None and value > 0:
+            self.actor.counters[counter] = value - 1
+        else:
+            if value is not None:
+                del self.actor.counters[counter]
+            return True
+
+    def is_done(self, doing, doing_descr, done_in):
+        if doing not in self.actor.counters:
+            self.set_counter(doing, done_in)
+
+        if self.actor.doing_descr != doing_descr:
+            self.anounce("is %s." % doing_descr)
+            self.actor.doing_descr = doing_descr
+
+        elif self.dec_counter(doing):
+            if self.actor.doing_descr == doing_descr:
+                self.actor.doing_descr = None
+            return True
+
+        raise IsNotDoneYet()
+
+
+    def act(self):
+        if ('resting' not in self.actor.counters
+                and not self.actor.tired
+                and self.dec_counter('tired')):
+            self.actor.tired = True
+
+        if ('eating' not in self.actor.counters
+                and not self.actor.hungry
+                and self.dec_counter('hungry')):
+            self.actor.hungry = True
+
+        try:
+            self.ai()
+        except IsNotDoneYet:
+            pass
 
 
 class NpcState(ActorState, NpcMixin):
     mutator_class = None
-    barters = False
-
 
     def __init__(self, name=None):
         super(NpcState, self).__init__(name)
+
+        if not hasattr(self, 'barters'):
+            self.barters = False
+
+        self.counters = {}
+        self.doing_descr = None
+        self.hungry = False
+        self.tired = False
+        self.accumulate = False
 
 
     def get_mutator(self, world):
@@ -19,28 +76,79 @@ class NpcState(ActorState, NpcMixin):
         return self.mutator_class(self, world)
 
 
-class PeasantMutator(StateMutator):
+class PeasantMutator(NpcMutator):
     def spawn(self, location):
         super(PeasantMutator, self).spawn(location)
         self.actor.wears = RoughspunTunic()
 
-    def act(self):
-        edibles = (item for item in self.location.items if isinstance(item, Vegetable))
+
+    def ai(self):
+        edibles = (i for i in self.location.items if isinstance(i, Edibles))
         if self.pick(edibles):
             return  # end cycle
 
-        edibles = (item for item in self.actor.bag if isinstance(item, Vegetable))
-        self.eat(edibles)
+        if self.actor.hungry:
+            edible = next(self._items_by_class(Edibles), None)
+            if edible and self.is_done("eating", "eating %s" % edible.name, 10):
+                self.eat(edible)
+                self.actor.hungry = False
+                self.set_counter("hungry", 100)
+
+        if self.actor.tired:
+            if self.actor.location is Field:
+                if self.is_done("walking", "tired and going home", 5):
+                    self.go('north')
+
+            if self.actor.location is Village:
+                if self.is_done("walking", "tired and going home", 5):
+                    self.go('enter')
+
+            if self.actor.location is VillageHouse:
+                if self.is_done("resting", "resting", 20):
+                    self.actor.tired = False
+                    self.set_counter("tired", 100)
+
+        if (self.actor.location is VillageHouse
+                and not next(self._items_by_class(Spindle), None)):
+            if self.is_done("crafting", "making a spindle", 10):
+                spindle = Spindle()
+                self.actor.bag.add(spindle)
+                self.anounce("makes %s." % spindle.name)
+
+        count_edibles = len(list(self._items_by_class(Edibles)))
+        if not self.actor.accumulate and count_edibles <= 1:
+            self.actor.accumulate = True
+        elif self.actor.accumulate and count_edibles >= 5:
+            self.accumulate = False
+
+        if self.actor.accumulate:
+            if self.actor.location is VillageHouse:
+                if self.is_done("walking", "going to a field", 5):
+                    self.go('exit')
+
+            if self.actor.location is Village:
+                if self.is_done("walking", "going to a field", 5):
+                    self.go('south')
+
+            if self.actor.location is Field:
+                if self.is_done("farming", "farming", 20):
+                    field, = self.location.means
+                    self.produce(field)
 
 
 class PeasantState(NpcState):
     mutator_class = PeasantMutator
     name = 'a peasant'
-    descr = 'a hungry and lazy peasant'
+    hungry = False
 
     @property
-    def barters(self):
-        return len(self.bag) > 0
+    def descr(self):
+        descr = self.name
+        if descr != 'a peasant':
+            descr = "%s the peasant" % descr
+        if self.doing_descr:
+            descr = '%s %s' % (descr, self.doing_descr)
+        return descr
 
 
 class GuardMutator(StateMutator):
