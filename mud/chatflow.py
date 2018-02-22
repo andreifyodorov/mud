@@ -1,9 +1,9 @@
-from itertools import chain, izip_longest
+from itertools import groupby, chain, izip_longest
 
 from .mutators import pretty_list, StateMutator
 from .locations import StartLocation
-from .commodities import ActionClasses, Vegetable, DirtyRags
-from .states import PlayerState
+from .commodities import ActionClasses, Commodity, Vegetable, DirtyRags
+from .states import PlayerState, NpcMixin
 
 
 class CommandPrefix(unicode):
@@ -39,37 +39,53 @@ class InputHandler(object):
             return self.f(arg)
 
 
+def bag_display(bag):
+    bag = sorted(bag, key=lambda i: i.name)
+    if all(isinstance(i, Commodity) for i in bag):
+        for item_cls, group in groupby(bag, lambda i: type(i)):
+            group = list(group)
+            count = len(group)
+            if count > 1:
+                caption = item_cls.plural % count
+            else:
+                caption = item_cls.name
+            yield caption, group.pop(0)
+    else:
+        for n, item in enumerate(bag):
+            yield item.name, item
+
+
 class ChoiceHandler(InputHandler):
     def __init__(self, state, command, f, bag, cmd_pfx, prompt=None,
                  select_subset=False, skip_single=False):
-        self.bag = sorted(bag, key=lambda item: item.name)
+        bag = set(bag)
+        self.bag = list(bag_display(bag))
         prompt = prompt or "what to %s" % command
-        self.prompt_str = "Please choose %s:" % prompt
-        self.select_subset = select_subset
+        self.prompt_str = "Please choose %s" % prompt
+        self.all = select_subset and bag
         self.skip_single = skip_single
         super(ChoiceHandler, self).__init__(state, command, f, self._get_prompt(), cmd_pfx)
 
     def _get_prompt(self):
-        if self.select_subset:
-            yield "%s or %s %sall" % (self.prompt_str, self.command, self.cmd_pfx)
+        if self.all:
+            yield "%s or %s %sall:" % (self.prompt_str, self.command, self.cmd_pfx)
         else:
-            yield self.prompt_str
-        for n, item in enumerate(self.bag):
-            yield "%s%d. %s" % (self.cmd_pfx, n + 1, item.name)
+            yield "%s:" % self.prompt_str
+        for n, (caption, item) in enumerate(self.bag):
+            yield "%s%d. %s" % (self.cmd_pfx, n + 1, caption)
 
 
     def _modify_arg(self, arg):
         arg = self.cmd_pfx.get_cmd(arg, arg)
-        if self.select_subset and arg == 'all':
-            return self.bag
+        if self.all and arg == 'all':
+            return self.all
 
         item = None
         if self.skip_single and len(self.bag) == 1:
-            item, = self.bag
-            print "skipped to %r" % item
+            item, = self.bag.pop(0)
         elif isinstance(arg, basestring) and arg.isdigit() and arg != '0':
             try:
-                item = self.bag[int(arg) - 1]
+                name, item = self.bag[int(arg) - 1]
             except:
                 pass
         if item:
@@ -112,7 +128,6 @@ class ChoiceChainHandler(ChoiceHandler):
         if callable(check) and not check(**self.args):
             return False
         return True
-
 
     @property
     def skipped(self):
@@ -317,22 +332,25 @@ class Chatflow(StateMutator):
 
             npcs = self.location.npcs
             if npcs:
-                yield self.choice_chain(
-                    'barter', self.barter,
-                    dict(arg='counterparty',
-                         bag=npcs,
-                         check=self.barter_counterparty,
-                         prompt="whom to barter with",
-                         skip_single=True),
+                if self.actor.barters:
+                    yield self.choice_chain(
+                        'barter', self.barter,
+                        dict(arg='counterparty',
+                             bag=npcs,
+                             check=self.barter_counterparty,
+                             prompt="whom to barter with",
+                             skip_single=True),
 
-                    dict(arg='for_what',
-                         bag=lambda counterparty: counterparty.bag,
-                         prompt="what to barter for"),
+                        dict(arg='for_what',
+                             bag=lambda counterparty: counterparty.bag,
+                             prompt="what to barter for"),
 
-                    dict(arg='what',
-                         bag=self.actor.bag,
-                         prompt="what to barter off")
-                )
+                        dict(arg='what',
+                             bag=self.actor.bag,
+                             prompt="what to barter off")
+                    )
+                else:
+                    yield 'barter', lambda: 'Your bag is empty, you have nothing to offer.'
 
             if self.actor.bag:
                 yield 'bag', self.bag
@@ -431,10 +449,27 @@ class Chatflow(StateMutator):
             yield "On the ground you see {items}. You can {0}pick or {0}collect them all." \
                   .format(self.cmd_pfx, items=pretty_list(self.location.items))
 
+        has_npcs = False
+        has_others = False
         for actor in self.location.actors:
+            if isinstance(actor, NpcMixin):
+                has_npcs = True
             if actor is self.actor:
                 continue
+            has_others = True
             yield "You see %s." % actor.descr
+
+        actions = []
+        if has_others:
+            actions.append("take a closer %slook at them" % self.cmd_pfx)
+            if has_npcs:
+                actions.append("try to %sbarter with them" % self.cmd_pfx)
+        if actions:
+            if len(actions) == 1:
+                actions_str, = actions
+            else:
+                actions_str = "%s or %s" % (', '.join(n for n in actions[:-1]), actions[-1])
+            yield "You can %s." % actions_str
 
 
     def go(self, direction):
@@ -472,15 +507,15 @@ class Chatflow(StateMutator):
         else:
             yield "You look into your bag and see:"
             seen_cls = {cls: False for cls in ActionClasses.__subclasses__()}
-            for n, item in enumerate(sorted(self.actor.bag, key=lambda item: item.name)):
-                item_str = "%d. %s" % (n + 1, item.name)
+            for n, (caption, item) in enumerate(bag_display(self.actor.bag)):
+                caption = "%d. %s" % (n + 1, caption)
                 for cls, seen in seen_cls.iteritems():
                     if isinstance(item, cls) and not seen:
-                        item_str += ", you can %s%s it" % (self.cmd_pfx, cls.verb)
+                        caption += ", you can %s%s it" % (self.cmd_pfx, cls.verb)
                         seen_cls[cls] = True
-                yield item_str
+                yield caption
             yield coins_message
-            yield "You can %sdrop [number]." % self.cmd_pfx
+            yield "You can %sdrop any item." % self.cmd_pfx
 
 
     def die(self):
