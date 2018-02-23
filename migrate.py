@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf8
 
 from mud.chatflow import Chatflow
 from mud.locations import Field, TownGate, VillageHouse
@@ -61,9 +62,9 @@ def migrate_4(storage):
     for player in storage.all_players():
         player.send(
             "Game updated to version 4. News:\n"
-            "* Wearables and crafting them\n"
-            "* Barter with NPCs\n"
-            "* Try to make it to market squre!")
+            "• Wearables and crafting them\n"
+            "• Barter with NPCs\n"
+            "• Try to make it to market square!")
 
     for actor in storage.all_players():
         actor.wears = DirtyRags()
@@ -72,7 +73,6 @@ def migrate_4(storage):
         if isinstance(actor, PeasantState):
             actor.name = "Jack"
             actor.wears = RoughspunTunic()
-            actor.bag.add(Spindle())
 
         if isinstance(actor, GuardState):
             actor.name = "gate guard"
