@@ -82,7 +82,7 @@ class ChoiceHandler(InputHandler):
 
         item = None
         if self.skip_single and len(self.bag) == 1:
-            item, = self.bag.pop(0)
+            caption, item = self.bag.pop(0)
         elif isinstance(arg, basestring) and arg.isdigit() and arg != '0':
             try:
                 name, item = self.bag[int(arg) - 1]
