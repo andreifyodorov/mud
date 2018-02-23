@@ -44,4 +44,4 @@ except:
     pass
 else:
     uwsgi.register_signal(30, "worker", enact)
-    uwsgi.add_timer(30, 5)
+    uwsgi.add_timer(30, 60)
