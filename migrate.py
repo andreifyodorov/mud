@@ -58,6 +58,13 @@ def migrate_3(storage):
 
 @version
 def migrate_4(storage):
+    for player in storage.all_players():
+        player.send(
+            "Game updated to version 4. News:\n"
+            "* Wearables and crafting them\n"
+            "* Barter with NPCs\n"
+            "* Try to make it to market squre!")
+
     for actor in storage.all_players():
         actor.wears = DirtyRags()
 
