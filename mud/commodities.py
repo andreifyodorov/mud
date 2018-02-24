@@ -14,7 +14,7 @@ class Edibles(ActionClasses):
 
 class Vegetable(Commodity, Edibles):
     name = u'🥕 a vegetable'
-    plural = '%d vegetables'
+    plural = u'🥕 %d vegetables'
 
 
 class Shovel(Commodity):
