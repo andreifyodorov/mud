@@ -1,3 +1,5 @@
+# coding: utf8
+
 class Commodity(object):
     pass
 
@@ -11,7 +13,7 @@ class Edibles(ActionClasses):
 
 
 class Vegetable(Commodity, Edibles):
-    name = 'a vegetable'
+    name = u'🥕 a vegetable'
     plural = '%d vegetables'
 
 
@@ -34,12 +36,12 @@ class Wearables(ActionClasses):
 
 
 class DirtyRags(Commodity, Wearables):
-    name = 'dirty rags'
+    name = u'🧦 dirty rags'
 
 
 class RoughspunTunic(Commodity, Wearables):
-    name = 'a roughspun tunic'
+    name = u'👚 a roughspun tunic'
 
 
 class Overcoat(Commodity, Wearables):
-    name = 'an overcoat'
+    name = u'🧥 an overcoat'

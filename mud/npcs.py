@@ -1,3 +1,5 @@
+# coding: utf8
+
 from .states import ActorState, PlayerState, NpcMixin
 from .mutators import StateMutator, ExitGuardMixin
 from .commodities import Edibles, DirtyRags, RoughspunTunic, Spindle
@@ -138,13 +140,24 @@ class PeasantMutator(NpcMutator):
 
 class PeasantState(NpcState):
     mutator_class = PeasantMutator
-    name = 'a peasant'
+    _default_name = 'a peasant'
+    _name = _default_name
+
+    icon = u"👩‍🌾"
     hungry = False
+
+    @property
+    def name(self):
+        return "%s %s " % (self.icon, self._name)
+
+    @name.setter
+    def name(self, value):
+        self._name = value
 
     @property
     def descr(self):
         descr = self.name
-        if descr != 'a peasant':
+        if descr != self._default_name:
             descr = "%s the peasant" % descr
         if self.doing_descr:
             descr = '%s %s' % (descr, self.doing_descr)
