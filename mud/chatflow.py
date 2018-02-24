@@ -363,10 +363,10 @@ class Chatflow(StateMutator):
                                           skip_single=True)
 
             else:
-                if self.actor.coins:
-                    yield 'bag', lambda: 'Your bag is empty. You have %d coins.' % self.actor.coins
+                if self.actor.diamonds:
+                    yield 'bag', lambda: 'Your bag is empty. You have %d diamonds.' % self.actor.diamonds
                 else:
-                    yield 'bag', lambda: 'Your bag is empty and you have no coins.'
+                    yield 'bag', lambda: 'Your bag is empty and you have no diamonds.'
 
             return
 
@@ -493,17 +493,17 @@ class Chatflow(StateMutator):
 
 
     def bag(self):
-        coins_message = None
-        if self.actor.coins:
-            coins_message = "You have %d coins." % self.actor.coins
+        diamonds_message = None
+        if self.actor.diamonds:
+            diamonds_message = "You have %d diamonds." % self.actor.diamonds
         else:
-            coins_message = "You have no coins."
+            diamonds_message = "You have no diamonds."
 
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
             yield "In your bag there's nothing but %s. You can %sdrop it." \
                   % (item.name, self.cmd_pfx)
-            yield coins_message
+            yield diamonds_message
         else:
             yield "You look into your bag and see:"
             seen_cls = {cls: False for cls in ActionClasses.__subclasses__()}
@@ -514,7 +514,7 @@ class Chatflow(StateMutator):
                         caption += " you can %s%s" % (self.cmd_pfx, cls.verb)
                         seen_cls[cls] = True
                 yield caption
-            yield coins_message
+            yield diamonds_message
             yield "You can %sdrop any item." % self.cmd_pfx
 
 

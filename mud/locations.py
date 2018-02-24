@@ -1,3 +1,5 @@
+# coding: utf8
+
 class Location(object):
     all = {}
 
@@ -52,12 +54,12 @@ VillageHouse.add_exit(
 
 TownGate = Location(
     id='loc_gate',
-    name='a town gate',
+    name='🏰 a town gate',
     descr='at a town gate.')
 
 Village.add_exit(
     direction='north',
-    descr='To the %s you see a town wall. A road leads to a gate.',
+    descr='To the %s you see 🏰 a town wall. A road leads to a gate.',
     location=TownGate)
 
 TownGate.add_exit(
