@@ -511,7 +511,7 @@ class Chatflow(StateMutator):
                 caption = "%d. %s" % (n + 1, caption)
                 for cls, seen in seen_cls.iteritems():
                     if isinstance(item, cls) and not seen:
-                        caption += ", you can %s%s it" % (self.cmd_pfx, cls.verb)
+                        caption += " you can %s%s" % (self.cmd_pfx, cls.verb)
                         seen_cls[cls] = True
                 yield caption
             yield coins_message
