@@ -41,7 +41,7 @@ class ActorState(State):
         self.alive = False
         self.location = None
         self.bag = set()
-        self.coins = 0
+        self.diamonds = 0
         self.wears = None
         self.last_success_time = 0
 

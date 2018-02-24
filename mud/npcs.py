@@ -143,7 +143,7 @@ class PeasantState(NpcState):
     _default_name = 'a peasant'
     _name = _default_name
 
-    icon = u"👩‍🌾"
+    icon = u"👵"
     hungry = False
 
     @property
