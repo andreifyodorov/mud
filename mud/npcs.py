@@ -121,7 +121,7 @@ class PeasantMutator(NpcMutator):
         if not self.actor.accumulate and count_edibles <= 1:
             self.actor.accumulate = True
         elif self.actor.accumulate and count_edibles >= 5:
-            self.accumulate = False
+            self.actor.accumulate = False
 
         if self.actor.accumulate:
             if self.actor.location is VillageHouse:
