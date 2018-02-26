@@ -87,9 +87,9 @@ class ActorState(State):
     @property
     def descr(self):
         if self._name:
-            descr = self._name
+            descr = self.name
             if self.definite_name:
-                descr = "%s %s" % (self.name, self.definite_name)
+                descr = "%s %s" % (descr, self.definite_name)
             return descr
         elif self.abstract_descr:
             return self.abstract_descr

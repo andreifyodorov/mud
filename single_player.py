@@ -53,7 +53,7 @@ if __name__ == '__main__':
     storage.chatkeys[player] = 1
     player.name = 'Andrey'
     player.bag.update([Vegetable(), Cotton(), Cotton(), Cotton(), Cotton()])
-    Chatflow(player, storage.world).spawn(Field)
+    Chatflow(player, storage.world).spawn(TownGate)
 
     observer = PlayerState(send_callback=observe)
     storage.players[2] = observer
