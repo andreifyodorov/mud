@@ -58,7 +58,7 @@ class StateMutator(object):
         return self.world[self.actor.location.id]
 
     def anounce(self, message):
-        self.location.broadcast("%s %s" % (self.actor.name, message), skip_sender=self.actor)
+        self.location.broadcast("%s %s" % (self.actor.Name, message), skip_sender=self.actor)
 
     def say_to(self, actor, message):
         actor.send("*%s*: %s" % (self.actor.Name, message))

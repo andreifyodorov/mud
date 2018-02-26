@@ -33,11 +33,33 @@ class State(object):
     pass
 
 
+# def default_field_mixin_factory(field):
+#     _field = "_%s" % field
+#     default_field = "default_%s" % field
+#     getter = "get_%s" % field
+#     setter = "set_%s" % field
+#     return type(
+#         "Default%sMixin" % field.capitalize(), (object,), {
+#             _field: None,
+#             default_field: None,
+#             getter: lambda self: getattr(self, _field) or getattr(self, default_field),
+#             setter: lambda self, value: setattr(self, _field, value),
+#             field: property(fget=lambda self: getattr(self, getter)(),
+#                             fset=lambda self, value: getattr(self, setter)(value))
+#         }
+#     )
+#
+
 class ActorState(State):
-    def __init__(self, name=None):
+    icon = None
+    abstract_name = None
+    definite_name = None
+    _name = None
+
+    def __init__(self, name=None, icon=None):
         super(ActorState, self).__init__()
-        if not hasattr(self, 'name'):
-            self.name = name
+        self.name = name
+        self.icon = self.icon or icon
         self.alive = False
         self.location = None
         self.bag = set()
@@ -46,8 +68,33 @@ class ActorState(State):
         self.last_success_time = 0
 
     @property
+    def name(self):
+        name = self._name or self.abstract_name
+        icon = self.icon
+        return "%s %s" % (icon, name) if icon else name
+
+    @name.setter
+    def name(self, value):
+        self._name = value
+
+    @property
     def Name(self):
-        return self.name[0].upper() + self.name[1:]  # works better than capitalize
+        name = self._name or self.abstract_name
+        name = name[0].upper() + name[1:]  # works better than capitalize
+        icon = self.icon
+        return "%s %s" % (icon, name) if icon else name
+
+    @property
+    def descr(self):
+        if self._name:
+            descr = self._name
+            if self.definite_name:
+                descr = "%s %s" % (self.name, self.definite_name)
+            return descr
+        elif self.abstract_descr:
+            return self.abstract_descr
+        else:
+            return self.abstract_name
 
     @property
     def barters(self):
@@ -55,15 +102,13 @@ class ActorState(State):
 
 
 class PlayerState(ActorState):
+    definite_name = '(player)'
+
     def __init__(self, send_callback):
         super(PlayerState, self).__init__()
         self.send = send_callback or (lambda message: None)
         self.input = {}
         self.chain = {}
-
-    @property
-    def descr(self):
-        return '%s (player)' % self.name
 
 
 class WorldState(State):
@@ -82,4 +127,4 @@ class WorldState(State):
             if skip_sender is not None and actor is skip_sender:
                 continue
             if isinstance(actor, PlayerState):
-                actor.send(message.capitalize())
+                actor.send(message)

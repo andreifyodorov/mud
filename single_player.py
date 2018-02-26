@@ -79,6 +79,10 @@ if __name__ == '__main__':
 
     # peasant = next(a for a in storage.world[VillageHouse.id].actors if isinstance(a, PeasantState))
 
+    # while storage.world.time < 517:
+    #     storage.world.enact()
+    #     observe("World time: %d" % storage.world.time)
+
     # for s in cmds:
     while True:
         chatflow = Chatflow(player, storage.world, cmd_pfx=CommandPrefix('/'))

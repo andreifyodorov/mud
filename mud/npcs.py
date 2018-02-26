@@ -72,6 +72,13 @@ class NpcState(ActorState, NpcMixin):
         self.accumulate = False
 
 
+    @property
+    def descr(self):
+        descr = super(NpcState, self).descr
+        if self.doing_descr:
+            descr = '%s %s' % (descr, self.doing_descr)
+        return descr
+
     def get_mutator(self, world):
         if self.mutator_class is None:
             return None
@@ -140,28 +147,9 @@ class PeasantMutator(NpcMutator):
 
 class PeasantState(NpcState):
     mutator_class = PeasantMutator
-    _default_name = 'a peasant'
-    _name = _default_name
-
-    icon = u"👵"
-    hungry = False
-
-    @property
-    def name(self):
-        return "%s %s " % (self.icon, self._name)
-
-    @name.setter
-    def name(self, value):
-        self._name = value
-
-    @property
-    def descr(self):
-        descr = self.name
-        if descr != self._default_name:
-            descr = "%s the peasant" % descr
-        if self.doing_descr:
-            descr = '%s %s' % (descr, self.doing_descr)
-        return descr
+    abstract_name = "a peasant"
+    definite_name = "the peasant"
+    icon = u'👵'
 
 
 class GuardMutator(StateMutator):
@@ -173,7 +161,7 @@ class GuardMutator(StateMutator):
                 and self.actor.location is TownGate
                 and to is MarketSquare):
             if isinstance(visitor, PlayerState):
-                visitor.send("The guard blocks your way and pushes you away.")
+                visitor.send(u"🛑 The guard blocks your way and pushes you away.")
                 self.say_to(visitor,
                     "We don't allow filthy beggars on ours streets! "
                     "Get yourself some proper clothes and then you may pass.")
@@ -183,7 +171,14 @@ class GuardMutator(StateMutator):
 
 class GuardState(NpcState, ExitGuardMixin):
     mutator_class = GuardMutator
-    name = 'a guard'
-    descr = 'a town gate guard'
+    abstract_name = 'a guard'
+    abstract_descr = 'a town gate guard'
+    icon = u'👮'
 
 
+# class MarchantState(NpcState):
+#     mutator_class = MerchantMutator
+#     name = 'a merchant'
+#     descr = 'a merchant buying and selling'
+#
+#
