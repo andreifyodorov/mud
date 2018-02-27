@@ -249,6 +249,7 @@ class Chatflow(StateMutator):
                 else:
                     if 'answered' in self.actor.input:
                         self.actor.input.clear()
+                        self.actor.chain.clear()
 
 
     def tokenize(self, text):
