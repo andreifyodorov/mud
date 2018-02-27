@@ -161,7 +161,7 @@ class GuardMutator(StateMutator):
                 and self.actor.location is TownGate
                 and to is MarketSquare):
             if isinstance(visitor, PlayerState):
-                visitor.send(u"🛑 The guard blocks your way and pushes you away.")
+                visitor.send("The guard blocks your way and pushes you away.")
                 self.say_to(visitor,
                     "We don't allow filthy beggars on ours streets! "
                     "Get yourself some proper clothes and then you may pass.")

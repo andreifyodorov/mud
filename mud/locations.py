@@ -54,12 +54,12 @@ VillageHouse.add_exit(
 
 TownGate = Location(
     id='loc_gate',
-    name=u'🏰 a town gate',
-    descr=u'at 🏰 a town gate.')
+    name=u"⛩  a town gate",
+    descr=u"at ⛩  a town gate.")
 
 Village.add_exit(
     direction='north',
-    descr=u'To the %s you see 🏰 a town wall. A road leads to a gate.',
+    descr=u"To the %s you see a town wall. A road leads to ⛩  a gate.",
     location=TownGate)
 
 TownGate.add_exit(
