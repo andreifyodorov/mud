@@ -153,6 +153,8 @@ class Storage(object):
             if isinstance(o, (dict, set)) and not o:
                 continue
             v = self.serialize(o)
+            if k.startswith('_') and isinstance(getattr(type(state), k[1:]), property):
+                k = k[1:]
             if v is not None and v is not False and v != 0:
                 serialized[k] = v
         return serialized
