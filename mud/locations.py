@@ -79,5 +79,5 @@ TownGate.add_exit(
 
 MarketSquare.add_exit(
     direction='south',
-    descr='To the %s you see ⛩ a gate that leads outside the city.',
+    descr=u'To the %s you see ⛩ a gate that leads outside the city.',
     location=TownGate)

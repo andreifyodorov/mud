@@ -45,3 +45,7 @@ class RoughspunTunic(Commodity, Wearables):
 
 class Overcoat(Commodity, Wearables):
     name = u'🧥 an overcoat'
+
+
+class FlamboyantAttire(Commodity, Wearables):
+    name = u'🎩 flamboyant attire'

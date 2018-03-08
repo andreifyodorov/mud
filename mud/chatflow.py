@@ -1,9 +1,11 @@
+# coding: utf8
 from itertools import groupby, chain, izip_longest
 
-from .mutators import pretty_list, StateMutator
+from .mutators import StateMutator
 from .locations import StartLocation
-from .commodities import ActionClasses, Commodity, Vegetable, DirtyRags
+from .commodities import ActionClasses, Commodity, Vegetable
 from .states import PlayerState, NpcMixin
+from .utils import list_sentence, pretty_list, group_by_class
 
 
 class CommandPrefix(unicode):
@@ -39,27 +41,11 @@ class InputHandler(object):
             return self.f(arg)
 
 
-def bag_display(bag):
-    bag = sorted(bag, key=lambda i: i.name)
-    if all(isinstance(i, Commodity) for i in bag):
-        for item_cls, group in groupby(bag, lambda i: type(i)):
-            group = list(group)
-            count = len(group)
-            if count > 1:
-                caption = item_cls.plural % count
-            else:
-                caption = item_cls.name
-            yield caption, group.pop(0)
-    else:
-        for n, item in enumerate(bag):
-            yield item.name, item
-
-
 class ChoiceHandler(InputHandler):
     def __init__(self, state, command, f, bag, cmd_pfx, prompt=None,
                  select_subset=False, skip_single=False):
         bag = set(bag)
-        self.bag = list(bag_display(bag))
+        self.bag = list(group_by_class(bag))
         prompt = prompt or "what to %s" % command
         self.prompt_str = "Please choose %s" % prompt
         self.all = select_subset and bag
@@ -187,7 +173,7 @@ class ChoiceChainHandler(ChoiceHandler):
                 if self.can_go_back:
                     footer = "You can go {0}back or {0}cancel.".format(self.cmd_pfx)
                 else:
-                    footer = "You can %scancel %s." % (self.cmd_pfx, self.command)
+                    footer = "You can %scancel the %s." % (self.cmd_pfx, self.command)
 
                 result = chain(result, [footer])
                 break
@@ -280,28 +266,20 @@ class Chatflow(StateMutator):
             self.actor.send("\n".join(result))
 
 
-    def input(self, command, f, prompt):
-        return (
-            command,
-            InputHandler(self.actor.input, command, f, prompt, cmd_pfx=self.cmd_pfx))
+    def input(self, cmd, f, prompt):
+        return InputHandler(self.actor.input, cmd, f, prompt, cmd_pfx=self.cmd_pfx)
 
 
-    def choice(self, command, f, bag, **kwargs):
-        return (
-            command,
-            ChoiceHandler(self.actor.input, command, f, bag, cmd_pfx=self.cmd_pfx, **kwargs))
+    def choice(self, cmd, f, bag, **kwargs):
+        return ChoiceHandler(self.actor.input, cmd, f, bag, cmd_pfx=self.cmd_pfx, **kwargs)
 
 
-    def choice_chain(self, command, f, *steps):
-        return (
-            command,
-            ChoiceChainHandler(self.actor.chain, self.actor.input, command, f, steps, self.cmd_pfx))
+    def choice_chain(self, cmd, f, *steps):
+        return ChoiceChainHandler(self.actor.chain, self.actor.input, cmd, f, steps, self.cmd_pfx)
 
 
-    def confirmation(self, command, f, prompt):
-        return (
-            command,
-            ConfirmationHandler(self.actor.input, command, f, prompt, self.cmd_pfx))
+    def confirmation(self, cmd, f, prompt):
+        return ConfirmationHandler(self.actor.input, cmd, f, prompt, self.cmd_pfx)
 
 
     def get_commands(self):
@@ -311,68 +289,93 @@ class Chatflow(StateMutator):
             yield 'me', lambda: self.look(self.actor)
 
         if self.actor.alive:
-            yield self.confirmation('restart', self.die, "Do you want to restart the game?")
+            yield (
+                'restart',
+                self.confirmation('restart', self.die, 'Do you want to restart the game?'))
 
-            yield 'where', lambda: self.where(verb="are still")
-
-            for means in self.location.means:
-                yield means.verb, lambda: self.produce(means)
+            yield 'where', lambda: self.where(verb='are still')
 
             for l in self.actor.location.exits.keys():
                 yield l, lambda: self.go(l)
 
-            if self.location.items:
-                yield self.choice('pick', self.pick, self.location.items, select_subset=True)
-                if len(self.location.items) > 1:
-                    yield 'collect', lambda: self.pick(self.location.items)
+            yield (
+                'look',
+                lambda *args:
+                    'You look around and think, "There\'s no one here but %sme".' % self.cmd_pfx
+                    if not any(self.others)
+                    else self.choice('look', self.look, self.others,
+                                     prompt="whom to look at", skip_single=True)(*args))
 
-            others = list(a for a in self.location.actors if a is not self.actor)
-            if others:
-                yield self.choice('look', self.look, others, prompt="whom to look at",
-                                  skip_single=True)
+            yield (
+                'barter',
+                lambda *args:
+                    "There's no one here you can barter with."
+                    if not any(o.barters for o in self.others)
+                    else 'Your bag is empty, you have nothing to offer.' if not self.actor.bag
+                    else self.get_barter_chain()(*args))
 
-            npcs = self.location.npcs
-            if npcs:
-                if self.actor.barters:
-                    yield self.choice_chain(
-                        'barter', self.barter,
-                        dict(arg='counterparty',
-                             bag=npcs,
-                             check=self.barter_counterparty,
-                             prompt="whom to barter with",
-                             skip_single=True),
+            yield (
+                'sell',
+                lambda *args:
+                    "There's no one here you can sell to."
+                    if not any(o.buys for o in self.others)
+                    else 'Your bag is empty, you have nothing to sell.' if not self.actor.bag
+                    else self.get_sell_chain()(*args))
 
-                        dict(arg='for_what',
-                             bag=lambda counterparty: counterparty.bag,
-                             prompt="what to barter for"),
+            yield (
+                'buy',
+                lambda *args:
+                    "There's no one here you can buy from."
+                    if not any(o.sells for o in self.others)
+                    else 'Your have no credits to buy anything.' if not self.actor.credits
+                    else self.get_buy_chain()(*args))
 
-                        dict(arg='what',
-                             bag=self.actor.bag,
-                             prompt="what to barter off")
-                    )
-                else:
-                    yield 'barter', lambda: 'Your bag is empty, you have nothing to offer.'
 
-            if self.actor.bag:
-                yield 'bag', self.bag
-                yield self.choice('drop', self.drop, self.actor.bag, select_subset=True)
+            nothing_there = 'There is nothing on the ground that you can pick up.',
+            yield (
+                'pick',
+                lambda *args:
+                    self.choice('pick', self.pick, self.location.items, select_subset=True)(*args)
+                    if self.location.items
+                    else nothing_there)
 
-                for cls in ActionClasses.__subclasses__():
-                    items = set(self._items_by_class(cls))
-                    if items:
-                        yield self.choice(cls.verb, lambda i: self.use_commodity(cls, i), items,
-                                          skip_single=True)
+            yield (
+                'collect',
+                lambda: self.pick(self.location.items)
+                    if self.location.items
+                    else nothing_there)
 
-            else:
-                if self.actor.diamonds:
-                    yield 'bag', lambda: 'Your bag is empty. You have %d diamonds.' % self.actor.diamonds
-                else:
-                    yield 'bag', lambda: 'Your bag is empty and you have no diamonds.'
+            yield (
+                'bag',
+                lambda:
+                    self.bag() if self.actor.bag
+                    else 'Your bag is empty. You have %d credits.' % self.actor.credits
+                    if self.actor.credits
+                    else 'Your bag is empty and you have no credits.')
+
+            yield (
+                'drop',
+                lambda *args:
+                    "Your bag is already empty."
+                    if not self.actor.bag
+                    else self.choice('drop', self.drop, self.actor.bag, select_subset=True)(*args))
+
+            for cls in ActionClasses.__subclasses__():
+                yield (
+                    cls.verb,
+                    lambda *args:
+                        "You have nothing you can %s." % cls.verb
+                        if not any(self.actor.bag.filter(cls))
+                        else self.choice(cls.verb, lambda i: self.use_commodity(cls, i),
+                                         self.actor.bag.filter(cls), skip_single=True)(*args))
+
+            for means in self.location.means:
+                yield means.verb, lambda: self.produce(means)
 
             return
 
         yield 'start', self.start
-        yield self.input('name', self.name, "Please tell me your name.")
+        yield 'name', self.input('name', self.name, "Please tell me your name.")
 
 
     def welcome(self):
@@ -393,17 +396,12 @@ class Chatflow(StateMutator):
         return self.where(verb="wake up")
 
 
-    def spawn(self, location):
-        super(Chatflow, self).spawn(location)
-        self.actor.wears = DirtyRags()
-
-
     def help(self):
         commands_list = (self.cmd_pfx + cmd for cmd, hndlr in self.get_commands())
         return "Known commands are: %s" % ", ".join(commands_list)
 
 
-    def look(self, actor):
+    def look(self, actor):  #TODO: add if actor barters / buys / sells
         if actor == self.actor:
             descr = "You are %s." % actor.descr
             if actor.alive:
@@ -413,11 +411,44 @@ class Chatflow(StateMutator):
                 yield "You are dead."
                 return
             yield "In your bag you have %s." % pretty_list(actor.bag)
-            wear_str = "You wear"
+            if actor.wears:
+                yield "You wear %s." % actor.wears.name
+            else:
+                yield "You are naked."
         else:
             yield "You see %s." % actor.descr
-            wear_str = "%s wears" % actor.Name
-        yield "%s %s." % (wear_str, actor.wears.name)
+            if actor.wears:
+                yield "%s wears %s." % (actor.Name, actor.wears.name)
+            else:
+                yield "%s is naked." % actor.Name
+
+
+    def get_barter_chain(self):
+        return self.choice_chain(
+            'barter',
+            self.barter,
+
+            dict(arg='counterparty',
+                 bag=(o for o in self.others if o.barters),
+                 # check=self.barter_counterparty,  #TODO: looks like we don't need this check
+                 prompt="whom to barter with",
+                 skip_single=True),
+
+            dict(arg='for_what',
+                 bag=lambda counterparty: counterparty.bag,
+                 prompt="what to barter for"),
+
+            dict(arg='what',
+                 bag=self.actor.bag,
+                 prompt="what to barter off")
+        )
+
+
+    # def barter_counterparty(self, counterparty):
+    #     if not counterparty.barters:
+    #         self.actor.send("%s doesn't want to barter with you." % counterparty.Name)
+    #         return False
+    #     return True
 
 
     def barter(self, counterparty, what, for_what):
@@ -426,11 +457,50 @@ class Chatflow(StateMutator):
                   % (pretty_list(what), pretty_list(for_what), counterparty.name)
 
 
-    def barter_counterparty(self, counterparty):
-        if not counterparty.barters:
-            self.actor.send("%s doesn't want to barter with you." % counterparty.Name)
-            return False
-        return True
+    def get_sell_chain(self):
+        return self.choice_chain(
+            'sell',
+            self.sell,
+
+            dict(arg='counterparty',
+                 bag=(o for o in self.others if o.buys),
+                 prompt="whom to sell to",
+                 skip_single=True),
+
+            dict(arg="what",
+                 bag=self.actor.bag,
+                 prompt="what to sell")
+        )
+
+
+    def sell(self, counterparty, what):
+        if super(Chatflow, self).sell(counterparty, what):
+            yield 'You sell %s to %s for %d credits.' \
+                  % (pretty_list(what), counterparty.name,
+                     1 if isinstance(what, Commodity) else len(what))
+
+
+    def get_buy_chain(self):
+        return self.choice_chain(
+            'buy',
+            self.buy,
+
+            dict(arg='counterparty',
+                 bag=(o for o in self.others if o.buys),
+                 prompt="whom to buy from",
+                 skip_single=True),
+
+            dict(arg="what",
+                 bag=lambda counterparty: counterparty.for_sale,
+                 prompt="what to buy")
+        )
+
+
+    def buy(self, counterparty, what):
+        if super(Chatflow, self).buy(counterparty, what):
+            yield 'You buy %s from %s for %d credits.' \
+                  % (pretty_list(what), counterparty.name,
+                     1 if isinstance(what, Commodity) else len(what))
 
 
     def where(self, verb="are"):
@@ -450,27 +520,26 @@ class Chatflow(StateMutator):
             yield "On the ground you see {items}. You can {0}pick or {0}collect them all." \
                   .format(self.cmd_pfx, items=pretty_list(self.location.items))
 
-        has_npcs = False
-        has_others = False
-        for actor in self.location.actors:
-            if isinstance(actor, NpcMixin):
-                has_npcs = True
-            if actor is self.actor:
-                continue
-            has_others = True
-            yield "You see %s." % actor.descr
-
-        actions = []
-        if has_others:
-            actions.append("take a closer %slook at them" % self.cmd_pfx)
-            if has_npcs:
-                actions.append("try to %sbarter with them" % self.cmd_pfx)
-        if actions:
-            if len(actions) == 1:
-                actions_str, = actions
+        others = list(self.others)
+        if others:
+            if len(others) > 1:
+                yield "You see people:"
+                for actor in others:
+                    yield u"  • %s" % actor.descr
             else:
-                actions_str = "%s or %s" % (', '.join(n for n in actions[:-1]), actions[-1])
-            yield "You can %s." % actions_str
+                for actor in others:
+                    yield "You see %s." % actor.descr
+
+            actions = ['take a closer %slook at them']
+            if any(a.barters for a in others):
+                actions.append('%sbarter')
+            if any(a.sells for a in others):
+                actions.append('%sbuy')
+            if any(a.buys for a in others):
+                actions.append('%ssell')
+
+            actions = (a % self.cmd_pfx for a in actions)
+            yield "You can %s." % (list_sentence(actions, glue="or"))
 
 
     def go(self, direction):
@@ -494,29 +563,31 @@ class Chatflow(StateMutator):
 
 
     def bag(self):
-        diamonds_message = None
-        if self.actor.diamonds:
-            diamonds_message = "You have %d diamonds." % self.actor.diamonds
+        credits_message = None
+        if self.actor.credits > 1:
+            credits_message = "You have %d credits." % self.actor.credits
+        elif self.actor.credits == 1:
+            credits_message = "You have 1 credit."
         else:
-            diamonds_message = "You have no diamonds."
+            credits_message = "You have no credits."
 
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
             yield "In your bag there's nothing but %s. You can %sdrop it." \
                   % (item.name, self.cmd_pfx)
-            yield diamonds_message
+            yield credits_message
         else:
             yield "You look into your bag and see:"
-            seen_cls = {cls: False for cls in ActionClasses.__subclasses__()}
-            for n, (caption, item) in enumerate(bag_display(self.actor.bag)):
-                caption = "%d. %s" % (n + 1, caption)
-                for cls, seen in seen_cls.iteritems():
-                    if isinstance(item, cls) and not seen:
-                        caption += " you can %s%s" % (self.cmd_pfx, cls.verb)
-                        seen_cls[cls] = True
-                yield caption
-            yield diamonds_message
-            yield "You can %sdrop any item." % self.cmd_pfx
+            for n, (caption, item) in enumerate(group_by_class(self.actor.bag)):
+                yield "%d. %s" % (n + 1, caption)
+
+            actions = ['drop']
+            for cls in ActionClasses.__subclasses__():
+                if any(self.actor.bag.filter(cls)):
+                    actions.append(cls.verb)
+            yield credits_message
+            action_str = list_sentence(("%s%s" % (self.cmd_pfx, a) for a in actions), glue="or")
+            yield "You can %s items." % action_str
 
 
     def die(self):

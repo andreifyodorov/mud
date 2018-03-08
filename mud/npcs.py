@@ -1,8 +1,7 @@
 # coding: utf8
-
 from .states import ActorState, PlayerState, NpcMixin
 from .mutators import StateMutator, ExitGuardMixin
-from .commodities import Edibles, DirtyRags, RoughspunTunic, Spindle
+from .commodities import Edibles, DirtyRags, Overcoat, FlamboyantAttire, RoughspunTunic, Spindle
 from .locations import Field, Village, VillageHouse, TownGate, MarketSquare
 
 
@@ -62,9 +61,6 @@ class NpcState(ActorState, NpcMixin):
     def __init__(self, name=None):
         super(NpcState, self).__init__(name)
 
-        if not hasattr(self, 'barters'):
-            self.barters = False
-
         self.counters = {}
         self.doing_descr = None
         self.hungry = False
@@ -86,18 +82,13 @@ class NpcState(ActorState, NpcMixin):
 
 
 class PeasantMutator(NpcMutator):
-    def spawn(self, location):
-        super(PeasantMutator, self).spawn(location)
-        self.actor.wears = RoughspunTunic()
-
-
     def ai(self):
         edibles = (i for i in self.location.items if isinstance(i, Edibles))
         if self.pick(edibles):
             return  # end cycle
 
         if self.actor.hungry:
-            edible = next(self._items_by_class(Edibles), None)
+            edible = next(self.actor.bag.filter(Edibles), None)
             if edible and self.is_done("eating", "eating %s" % edible.name, 10):
                 self.eat(edible)
                 self.actor.hungry = False
@@ -118,13 +109,13 @@ class PeasantMutator(NpcMutator):
                     self.set_counter("tired", 100)
 
         if (self.actor.location is VillageHouse
-                and not next(self._items_by_class(Spindle), None)):
+                and not next(self.actor.bag.filter(Spindle), None)):
             if self.is_done("crafting", "making a spindle", 10):
                 spindle = Spindle()
                 self.actor.bag.add(spindle)
                 self.anounce("makes %s." % spindle.name)
 
-        count_edibles = len(list(self._items_by_class(Edibles)))
+        count_edibles = len(list(self.actor.bag.filter(Edibles)))
         if not self.actor.accumulate and count_edibles <= 1:
             self.actor.accumulate = True
         elif self.actor.accumulate and count_edibles >= 5:
@@ -150,6 +141,11 @@ class PeasantState(NpcState):
     abstract_name = "a peasant"
     definite_name = "the peasant"
     icon = u'👵'
+    default_wear = RoughspunTunic
+
+    @property
+    def barters(self):
+        return len(self.bag) > 0
 
 
 class GuardMutator(StateMutator):
@@ -163,7 +159,7 @@ class GuardMutator(StateMutator):
             if isinstance(visitor, PlayerState):
                 visitor.send("The guard blocks your way and pushes you away.")
                 self.say_to(visitor,
-                    "We don't allow filthy beggars on ours streets! "
+                    "We don't allow filthy beggars on our streets! "
                     "Get yourself some proper clothes and then you may pass.")
             return False
         return True
@@ -174,11 +170,25 @@ class GuardState(NpcState, ExitGuardMixin):
     abstract_name = 'a guard'
     abstract_descr = 'a town gate guard'
     icon = u'👮'
+    default_wear = Overcoat
 
 
-# class MarchantState(NpcState):
-#     mutator_class = MerchantMutator
-#     name = 'a merchant'
-#     descr = 'a merchant buying and selling'
-#
-#
+class MerchantMutator(StateMutator):
+    def act(self):
+        pass
+
+
+class MerchantState(NpcState):
+    mutator_class = MerchantMutator
+    abstract_name = 'a merchant'
+    icon = u'🤵'
+    default_wear = FlamboyantAttire
+    buys = True
+
+    @property
+    def for_sale(self):
+        return self.bag
+
+    @property
+    def sells(self):
+        return len(self.for_sale) > 0

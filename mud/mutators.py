@@ -1,47 +1,6 @@
-from itertools import groupby, islice, chain
-
-
-def pretty_list(item_or_items):
-    if hasattr(item_or_items, 'name'):
-        return item_or_items.name
-
-    items = item_or_items
-
-    if len(items) == 0:
-        return 'nothing'
-
-    if len(items) == 1:
-        item, = items
-        return item.name
-
-    items = sorted(items, key=lambda item: item.name)
-    names = list(pretty_names(items))
-
-    if len(names) == 1:
-        name, = names
-        return name
-
-    return "%s and %s" % (', '.join(n for n in names[:-1]), names[-1])
-
-
-def pretty_names(items):
-    for name, group in groupby(items, lambda i: i.name):
-        group = list(group)
-
-        if len(group) == 1:
-            item, = group
-            yield item.name
-            continue
-
-        for item in group:
-            if hasattr(item, 'plural'):
-                l = len(list(group))
-                if callable(item.plural):
-                    yield item.plural(l)
-                else:
-                    yield item.plural % l
-                break
-            yield item.name
+from .commodities import Commodity
+from .utils import pretty_list
+from itertools import chain
 
 
 class ExitGuardMixin(object):
@@ -57,6 +16,10 @@ class StateMutator(object):
     def location(self):
         return self.world[self.actor.location.id]
 
+    @property
+    def others(self):
+        return (a for a in self.location.actors if a is not self.actor)
+
     def anounce(self, message):
         self.location.broadcast("%s %s" % (self.actor.Name, message), skip_sender=self.actor)
 
@@ -65,6 +28,8 @@ class StateMutator(object):
 
     def spawn(self, location):
         if not self.actor.location and not self.actor.alive:
+            if self.actor.default_wear:
+                self.actor.wears = self.actor.default_wear()
             self.actor.alive = True
             self.actor.location = location
             self.location.actors.add(self.actor)
@@ -142,14 +107,33 @@ class StateMutator(object):
             return True
         return False
 
-    def accept_barter(self, counterparty, what, for_what):
-        self._relocate(what, counterparty.bag, self.actor.bag)
-        self._relocate(for_what, self.actor.bag, counterparty.bag)
+    def sell(self, counterparty, what):
+        if (counterparty.buys
+                and counterparty.get_mutator(self.world).accept_buy(self.actor, what)):
+            self.anounce('sells %s to %s.' % (pretty_list(what), counterparty.name))
+            return True
+        return False
+
+    def accept_sell(self, counterparty, what):
+        self._relocate(what, self.actor.bag, counterparty.bag)
+        price = 1 if isinstance(what, Commodity) else len(what)
+        self.actor.credits += price
+        counterparty.credits -= price
         return True
 
-    def _items_by_class(self, cls):
-        return (i for i in self.actor.bag if isinstance(i, cls))
+    def buy(self, counterparty, what):
+        if (counterparty.sells
+                and counterparty.get_mutator(self.world).accept_sell(self.actor, what)):
+            self.anounce('buys %s from %s.' % (pretty_list(what), counterparty.name))
+            return True
+        return False
 
+    def accept_buy(self, counterparty, what):
+        self._relocate(what, counterparty.bag, self.actor.bag)
+        price = 1 if isinstance(what, Commodity) else len(what)
+        self.actor.credits -= price
+        counterparty.credits += price
+        return True
 
     def produce(self, means, missing=None):
         if missing is None:
@@ -157,7 +141,7 @@ class StateMutator(object):
         # get required/optional tools
         tools = {}
         for t in means.optional_tools | means.required_tools:
-            tool = next(self._items_by_class(t), None)
+            tool = next(self.actor.bag.filter(t), None)
             if tool:
                 tools[t] = tool
             elif t in means.required_tools:
@@ -165,7 +149,7 @@ class StateMutator(object):
         # get required materials
         materials = {}
         for t, n in means.required_materials.iteritems():
-            l = list(self._items_by_class(t))
+            l = list(self.actor.bag.filter(t))
             if len(l) >= n:
                 materials[t] = l[:n]
             else:

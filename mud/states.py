@@ -1,6 +1,7 @@
 # coding: utf-8
-
 from .locations import Location
+from .commodities import DirtyRags
+from .utils import FilterSet
 
 
 class NpcMixin(object):
@@ -20,11 +21,12 @@ class World(dict):
         return value
 
     def all_npcs(self):
-        return (a for l in self.values() for a in l.actors if isinstance(a, NpcMixin))
+        return (a for l in self.values() for a in l.actors.filter(NpcMixin))
 
     def enact(self):
         self.time = self.time or 0
-        for npc in set(self.all_npcs()):
+        npcs = set(self.all_npcs())  # npc can change location
+        for npc in npcs:
             npc.get_mutator(self).act()
         self.time += 1
 
@@ -33,45 +35,37 @@ class State(object):
     pass
 
 
-# def default_field_mixin_factory(field):
-#     _field = "_%s" % field
-#     default_field = "default_%s" % field
-#     getter = "get_%s" % field
-#     setter = "set_%s" % field
-#     return type(
-#         "Default%sMixin" % field.capitalize(), (object,), {
-#             _field: None,
-#             default_field: None,
-#             getter: lambda self: getattr(self, _field) or getattr(self, default_field),
-#             setter: lambda self, value: setattr(self, _field, value),
-#             field: property(fget=lambda self: getattr(self, getter)(),
-#                             fset=lambda self, value: getattr(self, setter)(value))
-#         }
-#     )
-#
-
 class ActorState(State):
     icon = None
     abstract_name = None
     definite_name = None
     _name = None
+    abstract_descr = None
+    default_wear = None
+    barters = False
+    sells = False
+    buys = False
 
-    def __init__(self, name=None, icon=None):
+    def __init__(self, name=None):
         super(ActorState, self).__init__()
         self.name = name
-        self.icon = self.icon or icon
         self.alive = False
         self.location = None
-        self.bag = set()
-        self.diamonds = 0
+        self.bag = FilterSet()
+        self.credits = 0
         self.wears = None
         self.last_success_time = 0
 
+    def _add_icon(self, name):
+        return "%s %s" % (self.icon, name) if self.icon else name
+
+    @property
+    def name_without_icon(self):
+        return self._name or self.abstract_name
+
     @property
     def name(self):
-        name = self._name or self.abstract_name
-        icon = self.icon
-        return "%s %s" % (icon, name) if icon else name
+        return self._add_icon(self.name_without_icon)
 
     @name.setter
     def name(self, value):
@@ -79,10 +73,9 @@ class ActorState(State):
 
     @property
     def Name(self):
-        name = self._name or self.abstract_name
+        name = self.name_without_icon
         name = name[0].upper() + name[1:]  # works better than capitalize
-        icon = self.icon
-        return "%s %s" % (icon, name) if icon else name
+        return self._add_icon(name)
 
     @property
     def descr(self):
@@ -94,15 +87,12 @@ class ActorState(State):
         elif self.abstract_descr:
             return self.abstract_descr
         else:
-            return self.abstract_name
-
-    @property
-    def barters(self):
-        return len(self.bag) > 0
+            return self.name
 
 
 class PlayerState(ActorState):
     definite_name = '(player)'
+    default_wear = DirtyRags
 
     def __init__(self, send_callback):
         super(PlayerState, self).__init__()
@@ -114,13 +104,9 @@ class PlayerState(ActorState):
 class WorldState(State):
     def __init__(self):
         super(WorldState, self).__init__()
-        self.items = set()
-        self.actors = set()
-        self.means = set()
-
-    @property
-    def npcs(self):
-        return (a for a in self.actors if isinstance(a, NpcMixin))
+        self.items = FilterSet()
+        self.actors = FilterSet()
+        self.means = FilterSet()
 
     def broadcast(self, message, skip_sender=None):
         for actor in self.actors:

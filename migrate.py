@@ -2,10 +2,10 @@
 # coding: utf8
 
 from mud.chatflow import Chatflow
-from mud.locations import Field, TownGate, VillageHouse
+from mud.locations import Field, TownGate, VillageHouse, MarketSquare
 from mud.production import Land, Distaff
 from mud.states import PlayerState
-from mud.npcs import PeasantState, GuardState
+from mud.npcs import PeasantState, GuardState, MerchantState
 from mud.commodities import Spindle, DirtyRags, RoughspunTunic, Overcoat
 
 from bot import bot
@@ -80,6 +80,16 @@ def migrate_4(storage):
 
     if not storage.world[VillageHouse.id].means:
         storage.world[VillageHouse.id].means.add(Distaff())
+
+
+@version
+def migrate_5(storage):
+    for actor in storage.all_npcs():
+        if isinstance(actor, GuardState):
+            actor.name = "a gate guard"
+
+    merchant = MerchantState()
+    merchant.get_mutator(storage.world).spawn(MarketSquare)
 
 
 def dry_send_callback_factory(chatkey):
