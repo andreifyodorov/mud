@@ -109,8 +109,7 @@ class WorldState(State):
         self.means = FilterSet()
 
     def broadcast(self, message, skip_sender=None):
-        for actor in self.actors:
+        for actor in self.actors.filter(PlayerState):
             if skip_sender is not None and actor is skip_sender:
                 continue
-            if isinstance(actor, PlayerState):
-                actor.send(message)
+            actor.send(message)

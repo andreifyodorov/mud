@@ -19,7 +19,6 @@ app = Flask(__name__)
 @app.route('/' + settings.TOKEN, methods=['POST'])
 def webhook():
     update = telegram.update.Update.de_json(request.get_json(force=True), bot)
-
     message = update.message.text
     chatkey = update.message.chat_id
 
@@ -28,6 +27,8 @@ def webhook():
         chatflow = Chatflow(storage.get_player_state(chatkey), storage.world, bot.cmd_pfx)
         chatflow.process_message(message)
         storage.save()
+
+    bot.send_messages()
 
     return 'OK'
 
