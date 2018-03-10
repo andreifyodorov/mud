@@ -24,6 +24,7 @@ class Storage(object):
         if settings.IS_PLAYGROUND:
             redis.delete('global_lock')
         setattr(Storage, '_default_redis_connection', redis)
+        return redis
 
 
     def __init__(self, send_callback_factory, redis=None, chatkey_type=None):
