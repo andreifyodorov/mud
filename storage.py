@@ -11,23 +11,24 @@ from mud.commodities import Commodity, Vegetable
 import settings
 
 
-PLAYER_KEY = "player:%s"
-LOCATION_KEY = "location:%s"
-ENTITY_KEY = "entity:%s:%s"
-
-
-redis = StrictRedis(**settings.REDIS)
-
-if settings.IS_PLAYGROUND:
-    redis.delete('global_lock')
-
-
 class Storage(object):
-    entity_classes = (NpcState, Commodity, MeansOfProduction)  # order matters
+    entity_classes = (NpcState, Commodity, MeansOfProduction)  # order matters (refs)
 
-    def __init__(self, send_callback_factory, redis_=None, chatkey_type=None):
+    _player_key = "player:%s"
+    _location_key = "location:%s"
+    _entity_key = "entity:%s:%s"
+
+    @property
+    def _default_redis_connection(self):
+        redis = StrictRedis(**settings.REDIS)
+        if settings.IS_PLAYGROUND:
+            redis.delete('global_lock')
+        setattr(Storage, '_default_redis_connection', redis)
+
+
+    def __init__(self, send_callback_factory, redis=None, chatkey_type=None):
         self.send_callback_factory = send_callback_factory
-        self.redis = redis_ or redis
+        self.redis = redis or self._default_redis_connection
         self.chatkey_type = chatkey_type or int
         self.players = {}
         self.chatkeys = {}
@@ -37,18 +38,18 @@ class Storage(object):
         self.entities = {classname: {} for classname in self.entity_subclass_by_name.iterkeys()}
         self.entitykeys = {}
 
-        self.lock_object = redis.lock('global_lock', timeout=2)
+        self.lock_object = self.redis.lock('global_lock', timeout=2)
         self.lock_object.acquire()
         self.version = int(self.redis.get('version') or 0)
 
         world = World()
-        serialized_world = redis.get('world')
+        serialized_world = self.redis.get('world')
         if serialized_world:
             self.deserialize_state(world, eval(serialized_world))
         self.world = world
 
         for location_id in Location.all.iterkeys():
-            serialized = redis.get(LOCATION_KEY % location_id)
+            serialized = self.redis.get(self._location_key % location_id)
             if serialized is not None:
                 self.deserialize_state(self.world[location_id], eval(serialized))
 
@@ -59,7 +60,7 @@ class Storage(object):
 
         player = PlayerState(send_callback=self.send_callback_factory(chatkey))
 
-        serialized = self.redis.get(PLAYER_KEY % chatkey)
+        serialized = self.redis.get(self._player_key % chatkey)
         if serialized is not None:
             self.deserialize_state(player, eval(serialized))
 
@@ -83,7 +84,7 @@ class Storage(object):
         if key:
             self.entities[classname][key] = entity
             self.entitykeys[entity] = key
-            serialized = self.redis.get(ENTITY_KEY % (classname, key))
+            serialized = self.redis.get(self._entity_key % (classname, key))
             if serialized is not None:
                 self.deserialize_state(entity, eval(serialized))
         else:
@@ -93,15 +94,15 @@ class Storage(object):
 
     def dump(self):
         for chatkey, state in self.players.iteritems():
-            yield PLAYER_KEY % chatkey, self.serialize_state(state)
+            yield self._player_key % chatkey, self.serialize_state(state)
         for location_id, state in self.world.iteritems():
-            yield LOCATION_KEY % location_id, self.serialize_state(state)
+            yield self._location_key % location_id, self.serialize_state(state)
         for cls in self.entity_subclasses:
             classname = cls.__name__
             for key, entity in self.entities[classname].iteritems():
                 serialized = self.serialize_state(entity)
                 if serialized:
-                    yield ENTITY_KEY % (classname, key), serialized
+                    yield self._entity_key % (classname, key), serialized
         yield "world", self.serialize_state(self.world)
         yield "version", self.version
 
@@ -192,7 +193,7 @@ class Storage(object):
 
 
     def all_players(self):
-        keys = (key.split(":", 1) for key in redis.keys(PLAYER_KEY % "*"))
+        keys = (key.split(":", 1) for key in self.redis.keys(self._player_key % "*"))
         for prefix, chatkey in keys:
             yield self.get_player_state(self.chatkey_type(chatkey))
 

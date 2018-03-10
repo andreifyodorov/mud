@@ -54,7 +54,7 @@ class ActorState(State):
         self.bag = FilterSet()
         self.credits = 0
         self.wears = None
-        self.last_success_time = 0
+        self.last_success_time = None
 
     def _add_icon(self, name):
         return "%s %s" % (self.icon, name) if self.icon else name

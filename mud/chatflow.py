@@ -571,23 +571,24 @@ class Chatflow(StateMutator):
         else:
             credits_message = "You have no credits."
 
+        actions = ['drop']
+        for cls in ActionClasses.__subclasses__():
+            if any(self.actor.bag.filter(cls)):
+                actions.append(cls.verb)
+        actions_sentence = list_sentence(("%s%s" % (self.cmd_pfx, a) for a in actions), glue="or")
+
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
-            yield "In your bag there's nothing but %s. You can %sdrop it." \
-                  % (item.name, self.cmd_pfx)
+            yield "In your bag there's nothing but %s. You can %s it."  \
+                % (item.name, actions_sentence)
             yield credits_message
         else:
             yield "You look into your bag and see:"
             for n, (caption, item) in enumerate(group_by_class(self.actor.bag)):
                 yield "%d. %s" % (n + 1, caption)
 
-            actions = ['drop']
-            for cls in ActionClasses.__subclasses__():
-                if any(self.actor.bag.filter(cls)):
-                    actions.append(cls.verb)
             yield credits_message
-            action_str = list_sentence(("%s%s" % (self.cmd_pfx, a) for a in actions), glue="or")
-            yield "You can %s items." % action_str
+            yield "You can %s items." % actions_sentence
 
 
     def die(self):

@@ -84,6 +84,9 @@ def migrate_4(storage):
 
 @version
 def migrate_5(storage):
+    for player in storage.all_players():
+        player.send("Game updated to version 5. Added a merchant.")
+
     for actor in storage.all_npcs():
         if isinstance(actor, GuardState):
             actor.name = "a gate guard"

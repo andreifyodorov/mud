@@ -107,6 +107,11 @@ class StateMutator(object):
             return True
         return False
 
+    def accept_barter(self, counterparty, what, for_what):
+        return (
+            self._relocate(what, counterparty.bag, self.actor.bag)
+            and self._relocate(for_what, self.actor.bag, counterparty.bag))
+
     def sell(self, counterparty, what):
         if (counterparty.buys
                 and counterparty.get_mutator(self.world).accept_buy(self.actor, what)):
@@ -158,7 +163,7 @@ class StateMutator(object):
         if missing:
             return
         # not too often
-        if self.actor.last_success_time == self.world.time:
+        if self.actor.last_success_time and self.actor.last_success_time == self.world.time:
             return
         # remove materials from the world
         self._relocate(chain.from_iterable(materials.itervalues()), self.actor.bag)
