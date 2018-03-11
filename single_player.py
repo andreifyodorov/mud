@@ -2,64 +2,47 @@
 
 from mud.chatflow import Chatflow, CommandPrefix
 from mud.states import World, PlayerState
-from mud.locations import StartLocation, Field, VillageHouse, TownGate
-from mud.commodities import Vegetable, Cotton, Spindle
+from mud.locations import StartLocation, Field, VillageHouse, TownGate, MarketSquare
+from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags
 from mud.npcs import PeasantState
+from test import MockRedis
+from storage import Storage
 from migrate import migrations
 
 from colored import fore, style
 import re
 
 
-class MockStorage(object):
-    def __init__(self):
-        self.world = World()
-        self.world.time = 1
-        self.players = {}
-        self.chatkeys = {}
-
-    def all_players(self):
-        return self.players.values()
-
-    def all_npcs(self):
-        return self.world.all_npcs()
-
-
-def output(msg):
-    msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
-    print fore.YELLOW + msg + style.RESET
-
-
-def observe(msg):
-    print fore.BLUE + msg + style.RESET
-
+PLAYER_CHATKEY = 1
+OBSERVER_CHATKEY = 2
 
 def send_callback_factory(chatkey):
-    def callback(msg):
-        pass
-    return callback
+    if chatkey == PLAYER_CHATKEY:
+        def output(msg):
+            msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
+            print fore.YELLOW + msg + style.RESET
+        return output
+
+    def observe(msg):
+        print fore.BLUE + msg + style.RESET
+    return observe
 
 
 if __name__ == '__main__':
-    # from storage import Storage
-    # storage = Storage(send_callback_factory)
-    storage = MockStorage()
+    storage = Storage(send_callback_factory, redis=MockRedis())
 
     for migrate in migrations:
+        # print "Apply migration %s" % migrate
         migrate(storage)
 
-    player = PlayerState(send_callback=output)
-    storage.players[1] = player
-    storage.chatkeys[player] = 1
+    player = storage.get_player_state(PLAYER_CHATKEY)
     player.name = 'Andrey'
-    player.bag.update([Vegetable(), Cotton(), Cotton(), Cotton(), Cotton()])
-    Chatflow(player, storage.world).spawn(TownGate)
+    player.bag.update([Vegetable(), Cotton(), Cotton(), DirtyRags(), DirtyRags()])
+    Chatflow(player, storage.world).spawn(MarketSquare)
 
-    observer = PlayerState(send_callback=observe)
-    storage.players[2] = observer
-    storage.chatkeys[observer] = 2
+    observer = storage.get_player_state(OBSERVER_CHATKEY)
     observer.name = 'A silent observer'
-    Chatflow(observer, storage.world).spawn(Field)
+    Chatflow(observer, storage.world).spawn(MarketSquare)
 
     # peasant = PeasantState()
     # peasant.name = 'Jack'
@@ -74,6 +57,7 @@ if __name__ == '__main__':
     # s = '/look'
     # s = '/bag'
     # s = '/drop'
+    # s = '/barter'
 
     # cmds = ['/barter', '/1', '/1']
 
@@ -90,7 +74,7 @@ if __name__ == '__main__':
 
         try:
             # s = raw_input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
-            s = raw_input('%s> ' % "")
+            s = raw_input('%s> ' % ((player.input, player.chain),))
         except (EOFError, KeyboardInterrupt):
             break
 
