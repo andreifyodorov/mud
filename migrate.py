@@ -138,6 +138,7 @@ def migrate(dry_run=True):
         storage.lock_object.release()
     else:
         storage.save()
+        bot.send_messages()
 
 
 if __name__ == '__main__':
