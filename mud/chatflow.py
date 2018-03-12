@@ -610,8 +610,9 @@ class Chatflow(StateMutator):
             else:
                 return "You fail to %s anything." % means.verb
 
-        return "You %s %s. You put it into your %sbag." \
-               % (means.verb, pretty_list(fruits), self.cmd_pfx)
+        pronoun = "them" if len(fruits) > 1 else "it"
+        return "You %s %s. You put %s into your %sbag." \
+               % (means.verb, pretty_list(fruits), pronoun, self.cmd_pfx)
 
     def deteriorate(self, commodity):
         super(Chatflow, self).deteriorate(commodity)
