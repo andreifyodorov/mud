@@ -1,4 +1,4 @@
-from commodities import Vegetable, Cotton, Spindle, RoughspunTunic
+from .commodities import Vegetable, Cotton, Spindle, RoughspunTunic, Shovel
 from random import uniform
 
 
@@ -20,10 +20,17 @@ class MeansOfProduction(object):
 class Land(MeansOfProduction):
     descr = "The land seems arable to %s."
     verb = 'farm'
+    optional_tools = {Shovel}
+
+    def get_product(self):
+        return weighted_choice({Vegetable: 1, Cotton: .1})
 
     def produce(self, tools, materials):
-        tools.clear()
-        return weighted_choice({Vegetable: 1, Cotton: .1})
+        result = []
+        if tools:
+            result.append(self.get_product())
+        result.append(self.get_product())
+        return result
 
 
 class Distaff(MeansOfProduction):
@@ -37,5 +44,9 @@ class Distaff(MeansOfProduction):
         return RoughspunTunic()
 
 
-class Factory(MeansOfProduction):
-    pass
+class Workbench(MeansOfProduction):
+    descr = "There's a workbench. You can %s something useful."
+    verb = 'make'
+
+    def produce(self, tools, materials):
+        return Shovel()

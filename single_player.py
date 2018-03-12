@@ -2,8 +2,8 @@
 
 from mud.chatflow import Chatflow, CommandPrefix
 from mud.states import World, PlayerState
-from mud.locations import StartLocation, Field, VillageHouse, TownGate, MarketSquare
-from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags
+from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare
+from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags, Shovel
 from mud.npcs import PeasantState
 from test import MockRedis
 from storage import Storage
@@ -16,15 +16,19 @@ import re
 PLAYER_CHATKEY = 1
 OBSERVER_CHATKEY = 2
 
+
+def output(msg):
+    msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
+    print fore.YELLOW + msg + style.RESET
+
+
+def observe(msg):
+    print fore.BLUE + msg + style.RESET
+
+
 def send_callback_factory(chatkey):
     if chatkey == PLAYER_CHATKEY:
-        def output(msg):
-            msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
-            print fore.YELLOW + msg + style.RESET
         return output
-
-    def observe(msg):
-        print fore.BLUE + msg + style.RESET
     return observe
 
 
@@ -37,12 +41,12 @@ if __name__ == '__main__':
 
     player = storage.get_player_state(PLAYER_CHATKEY)
     player.name = 'Andrey'
-    player.bag.update([Vegetable(), Cotton(), Cotton(), DirtyRags(), DirtyRags()])
-    Chatflow(player, storage.world).spawn(MarketSquare)
+    player.bag.update([Shovel()])
+    Chatflow(player, storage.world).spawn(Field)
 
     observer = storage.get_player_state(OBSERVER_CHATKEY)
     observer.name = 'A silent observer'
-    Chatflow(observer, storage.world).spawn(MarketSquare)
+    Chatflow(observer, storage.world).spawn(Location.all[player.location.id])
 
     # peasant = PeasantState()
     # peasant.name = 'Jack'

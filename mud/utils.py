@@ -59,22 +59,29 @@ def pretty_list(item_or_items):
     return list_sentence(label for label, speciment in group_by_class(items))
 
 
+def get_name(i):
+    if hasattr(i, 'name_with_condition'):
+        return i.name_with_condition
+    else:
+        return i.name
+
+
 def group_by_class(items):
-    items = sorted(items, key=lambda i: i.name)
-    grouped = groupby(items, lambda i: (type(i), i.name))
+    items = sorted(items, key=lambda i: type(i).__name__)
+    grouped = groupby(items, lambda i: (type(i), get_name(i)))
     for (cls, name), group in grouped:
         group = list(group)
         count = len(group)
 
-        if count > 1 and hasattr(cls, 'plural'):
-            specimen = group.pop(0)
-            if callable(cls.plural):
-                yield cls.plural(count), specimen
+        specimen = group[0]
+        if count > 1 and hasattr(specimen, 'plural'):
+            if callable(specimen.plural):
+                yield specimen.plural(count), specimen
             else:
-                yield cls.plural % count, specimen
+                yield specimen.plural % count, specimen
         else:
             for item in group:
-                yield item.name, item
+                yield name, item
 
 
 class FilterSet(set):

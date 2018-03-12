@@ -1,4 +1,4 @@
-from .commodities import Commodity
+from .commodities import Commodity, Deteriorates
 from .utils import pretty_list
 from itertools import chain
 
@@ -28,8 +28,8 @@ class StateMutator(object):
 
     def spawn(self, location):
         if not self.actor.location and not self.actor.alive:
-            if self.actor.default_wear:
-                self.actor.wears = self.actor.default_wear()
+            if self.default_wear:
+                self.actor.wears = self.default_wear()
             self.actor.alive = True
             self.actor.location = location
             self.location.actors.add(self.actor)
@@ -168,12 +168,24 @@ class StateMutator(object):
         # remove materials from the world
         self._relocate(chain.from_iterable(materials.itervalues()), self.actor.bag)
         # be fruitful
-        fruit = means.produce(tools, materials)
-        if fruit is None:
+        fruit_or_fruits = means.produce(tools, materials)
+        if fruit_or_fruits is None:
             return
+        fruits = [fruit_or_fruits] if isinstance(fruit_or_fruits, Commodity) else fruit_or_fruits
 
         self.actor.last_success_time = self.world.time
-        self.anounce('%ss %s.' % (means.verb, fruit.name))
-        self.actor.bag.add(fruit)
+        self.anounce('%ss %s.' % (means.verb, pretty_list(fruits)))
+        self.actor.bag.update(fruits)
 
-        return fruit
+        for tool in tools.itervalues():
+            if isinstance(tool, Deteriorates):
+                tool.usages += 1
+                if tool.usages >= tool.max_usages:
+                    self.deteriorate(tool)
+
+        return fruits
+
+    def deteriorate(self, commodity):
+        if hasattr(commodity, 'deteriorates_into'):
+            self.actor.bag.add(commodity.deteriorates_into())
+        self._relocate(commodity, self.actor.bag)

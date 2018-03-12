@@ -1,6 +1,5 @@
 # coding: utf-8
 from .locations import Location
-from .commodities import DirtyRags
 from .utils import FilterSet
 
 
@@ -32,16 +31,31 @@ class World(dict):
 
 
 class State(object):
-    pass
+    icon = None
+    abstract_name = None
+
+    @property
+    def name_without_icon(self):
+        return self.abstract_name
+
+    def _add_icon(self, name):
+        return "%s %s" % (self.icon, name) if self.icon else name
+
+    @property
+    def name(self):
+        return self._add_icon(self.name_without_icon)
+
+    @property
+    def Name(self):
+        name = self.name_without_icon
+        name = name[0].upper() + name[1:]  # works better than capitalize
+        return self._add_icon(name)
 
 
 class ActorState(State):
-    icon = None
-    abstract_name = None
     definite_name = None
     _name = None
     abstract_descr = None
-    default_wear = None
     barters = False
     sells = False
     buys = False
@@ -56,26 +70,13 @@ class ActorState(State):
         self.wears = None
         self.last_success_time = None
 
-    def _add_icon(self, name):
-        return "%s %s" % (self.icon, name) if self.icon else name
-
     @property
     def name_without_icon(self):
-        return self._name or self.abstract_name
+        return self._name or super(ActorState, self).name_without_icon
 
-    @property
-    def name(self):
-        return self._add_icon(self.name_without_icon)
-
-    @name.setter
+    @State.name.setter
     def name(self, value):
         self._name = value
-
-    @property
-    def Name(self):
-        name = self.name_without_icon
-        name = name[0].upper() + name[1:]  # works better than capitalize
-        return self._add_icon(name)
 
     @property
     def descr(self):
@@ -92,7 +93,6 @@ class ActorState(State):
 
 class PlayerState(ActorState):
     definite_name = '(player)'
-    default_wear = DirtyRags
 
     def __init__(self, send_callback):
         super(PlayerState, self).__init__()

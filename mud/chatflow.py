@@ -3,9 +3,9 @@ from itertools import groupby, chain, izip_longest
 
 from .mutators import StateMutator
 from .locations import StartLocation
-from .commodities import ActionClasses, Commodity, Vegetable
+from .commodities import ActionClasses, Commodity, Vegetable, DirtyRags
 from .states import PlayerState, NpcMixin
-from .utils import list_sentence, pretty_list, group_by_class
+from .utils import list_sentence, pretty_list, group_by_class, FilterSet
 
 
 class CommandPrefix(unicode):
@@ -213,6 +213,8 @@ class UnknownChatflowCommand(Exception):
 
 
 class Chatflow(StateMutator):
+    default_wear = DirtyRags
+
     def __init__(self, actor, world, cmd_pfx=None):
         super(Chatflow, self).__init__(actor, world)
         self.cmd_pfx = cmd_pfx or CommandPrefix()
@@ -520,12 +522,14 @@ class Chatflow(StateMutator):
             yield "On the ground you see {items}. You can {0}pick or {0}collect them all." \
                   .format(self.cmd_pfx, items=pretty_list(self.location.items))
 
-        others = list(self.others)
+        others = FilterSet(self.others)
         if others:
             if len(others) > 1:
                 yield "You see people:"
-                for actor in others:
-                    yield u"  • %s" % actor.descr
+                actor_groups = (others.filter(cls) for cls in (NpcMixin, PlayerState))
+                for actor_group in actor_groups:
+                    for actor in sorted(actor_group, key=lambda a: a.name):
+                        yield u"  • %s" % actor.descr
             else:
                 for actor in others:
                     yield "You see %s." % actor.descr
@@ -598,13 +602,21 @@ class Chatflow(StateMutator):
 
     def produce(self, means):
         missing = list()
-        fruit = super(Chatflow, self).produce(means, missing)
+        fruits = super(Chatflow, self).produce(means, missing)
 
-        if fruit is None:
+        if not fruits:
             if missing:
                 return "You need %s to %s." % (pretty_list(missing), means.verb)
             else:
                 return "You fail to %s anything." % means.verb
 
         return "You %s %s. You put it into your %sbag." \
-               % (means.verb, fruit.name, self.cmd_pfx)
+               % (means.verb, pretty_list(fruits), self.cmd_pfx)
+
+    def deteriorate(self, commodity):
+        super(Chatflow, self).deteriorate(commodity)
+        if hasattr(commodity, 'deteriorates_into'):
+            self.actor.send(
+                "%s turns into %s." % (commodity.Name, commodity.deteriorates_into.name))
+        else:
+            self.actor.send("%s disintegrates." % commodity.Name)

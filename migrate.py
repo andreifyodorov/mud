@@ -2,8 +2,8 @@
 # coding: utf8
 
 from mud.chatflow import Chatflow
-from mud.locations import Field, TownGate, VillageHouse, MarketSquare
-from mud.production import Land, Distaff
+from mud.locations import Field, TownGate, VillageHouse, MarketSquare, Factory
+from mud.production import Land, Distaff, Workbench
 from mud.states import PlayerState
 from mud.npcs import PeasantState, GuardState, MerchantState
 from mud.commodities import Spindle, DirtyRags, RoughspunTunic, Overcoat
@@ -49,9 +49,9 @@ def migrate_3(storage):
     for player in storage.all_players():
         player.send(
             "Game updated to version 3. Changes:\n"
-            "* New locations: a town gate, a market square.\n"
-            "* New NPC: a guard.\n"
-            "* Cotton is now more rare")
+            u"• New locations: a town gate, a market square.\n"
+            u"• New NPC: a guard.\n"
+            u"• Cotton is now more rare")
 
     guard = GuardState()
     guard.get_mutator(storage.world).spawn(TownGate)
@@ -62,9 +62,9 @@ def migrate_4(storage):
     for player in storage.all_players():
         player.send(
             "Game updated to version 4. News:\n"
-            "• Wearables and crafting them\n"
-            "• Barter with NPCs\n"
-            "• Try to make it to market square!")
+            u"• Wearables and crafting them\n"
+            u"• Barter with NPCs\n"
+            u"• Try to make it to market square!")
 
     for actor in storage.all_players():
         actor.wears = DirtyRags()
@@ -93,6 +93,21 @@ def migrate_5(storage):
 
     merchant = MerchantState()
     merchant.get_mutator(storage.world).spawn(MarketSquare)
+
+@version
+def migrate_6(storage):
+    for player in storage.all_players():
+        player.send(
+            "Game updated to version 6. News:\n"
+            u"• Factory district\n"
+            u"• Shovel production to foster agriculture\n"
+            u"• Tools wear out")
+
+    guard = GuardState()
+    guard.get_mutator(storage.world).spawn(MarketSquare)
+
+    if not storage.world[Factory.id].means:
+        storage.world[Factory.id].means.add(Workbench())
 
 
 def dry_send_callback_factory(chatkey):

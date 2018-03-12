@@ -81,3 +81,50 @@ MarketSquare.add_exit(
     direction='south',
     descr=u'To the %s you see ⛩ a gate that leads outside the city.',
     location=TownGate)
+
+FactoryDistrict = Location(
+    id='loc_factory_dist',
+    name='factory district',
+    descr='in a factory district.')
+
+MarketSquare.add_exit(
+    direction='west',
+    descr='To the %s you see a factory district.',
+    location=FactoryDistrict)
+
+FactoryDistrict.add_exit(
+    direction='east',
+    descr='To the %s you see a market square.',
+    location=MarketSquare)
+
+Factory = Location(
+    id='loc_factory',
+    name=u'🏭 a factory',
+    descr=u'🏭 in a factory.')
+
+FactoryDistrict.add_exit(
+    direction='north',
+    descr=u'To the %s you see an entrance to 🏭 a factory building.',
+    location=Factory)
+
+Factory.add_exit(
+    direction='exit',
+    descr=u'You can %s a factory.',
+    location=FactoryDistrict)
+
+Slums = Location(
+    id='loc_slum',
+    name=u'slums',
+    descr=u'in a slum area.')
+
+FactoryDistrict.add_exit(
+    direction='south',
+    descr=u'To the %s you see slums.',
+    location=Slums)
+
+Slums.add_exit(
+    direction='north',
+    descr=u'To the %s you see a factory.',
+    location=FactoryDistrict)
+
+

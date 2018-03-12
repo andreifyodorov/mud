@@ -82,6 +82,8 @@ class NpcState(ActorState, NpcMixin):
 
 
 class PeasantMutator(NpcMutator):
+    default_wear = RoughspunTunic
+
     def ai(self):
         edibles = (i for i in self.location.items if isinstance(i, Edibles))
         if self.pick(edibles):
@@ -141,7 +143,6 @@ class PeasantState(NpcState):
     abstract_name = "a peasant"
     definite_name = "the peasant"
     icon = u'👵'
-    default_wear = RoughspunTunic
 
     @property
     def barters(self):
@@ -149,6 +150,8 @@ class PeasantState(NpcState):
 
 
 class GuardMutator(StateMutator):
+    default_wear = Overcoat
+
     def act(self):
         pass
 
@@ -168,12 +171,12 @@ class GuardMutator(StateMutator):
 class GuardState(NpcState, ExitGuardMixin):
     mutator_class = GuardMutator
     abstract_name = 'a guard'
-    abstract_descr = 'a town gate guard'
     icon = u'👮'
-    default_wear = Overcoat
 
 
 class MerchantMutator(StateMutator):
+    default_wear = FlamboyantAttire
+
     def act(self):
         pass
 
@@ -182,7 +185,6 @@ class MerchantState(NpcState):
     mutator_class = MerchantMutator
     abstract_name = 'a merchant'
     icon = u'🤵'
-    default_wear = FlamboyantAttire
     buys = True
 
     @property

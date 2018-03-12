@@ -8,7 +8,7 @@ from storage import Storage
 from migrate import migrations
 from mud.chatflow import Chatflow, CommandPrefix
 from mud.states import PlayerState
-from mud.commodities import Vegetable, Cotton, Spindle
+from mud.commodities import Vegetable, Cotton, Spindle, Shovel
 from mud.npcs import PeasantState
 
 
@@ -146,6 +146,7 @@ class ChatflowTestCase(unittest.TestCase):
 
 
     def test_06_tunic(self):
+        spindle = next(self.player.bag.filter(Spindle))
         self.send('/south')
 
         self.assertReplyContains('village', '/enter')
@@ -155,9 +156,26 @@ class ChatflowTestCase(unittest.TestCase):
         self.player.bag.update((Cotton(), Cotton()))
         self.send('/spin')
         self.assertReplyContains('tunic', '/bag')
+        self.assertEqual(spindle.usages, 1)
+
+        self.send('/bag')
+        self.assertReplyContains('used')  # tool wear out
 
         self.send('/wear')
         self.assertReplyContains('tunic')
+
+        self.storage.world.time += 1
+        self.player.bag.update((Cotton(), Cotton()))
+        self.send('/spin')
+        self.assertReplyContains('tunic')
+        self.assertEqual(spindle.usages, 2)
+
+        self.storage.world.time += 1
+        self.player.bag.update((Cotton(), Cotton()))
+        self.send('/spin')
+        self.assertReplyContains('tunic')
+        self.assertEqual(spindle.usages, 3)
+        self.assertFalse(spindle in self.player.bag)
 
         self.send('/exit')
         self.assertReplyContains('village', '/north')
@@ -171,6 +189,29 @@ class ChatflowTestCase(unittest.TestCase):
         self.assertReplyContains('/1')
         self.send('/1')
         self.assertTrue(self.player.credits > 0)
+
+
+    def test_08_shovel(self):
+        self.send('/west')
+        self.send('/north')
+
+        self.storage.world.time += 1
+        self.send('/make')
+        self.assertReplyContains('shovel')
+        shovel = next(self.player.bag.filter(Shovel))
+
+        self.send('/exit')
+        self.send('/east')
+        self.send('/south')
+        self.send('/south')
+        self.send('/south')
+
+        for _ in range(5):
+            self.storage.world.time += 1
+            self.send('/farm')
+
+        self.assertFalse(shovel in self.player.bag)
+
 
 
 def load_tests(loader, tests, pattern):
