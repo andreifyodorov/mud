@@ -37,6 +37,7 @@ def enact(*args):
     storage = Storage(bot.send_callback_factory)
     storage.world.enact()
     storage.save()
+    bot.send_messages()
 
 
 try:
