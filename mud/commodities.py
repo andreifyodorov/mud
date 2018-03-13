@@ -11,6 +11,10 @@ class Commodity(State):
             raise AttributeError
         return super(Commodity, self).__getattribute__(attr)
 
+    @property
+    def descr(self):
+        return self.name
+
 
 class ActionClasses(object):
     pass
@@ -58,6 +62,10 @@ def condition(usage, max_usage):
     return conditions[index] if index >= 0 else str()
 
 
+class Wieldables(ActionClasses):
+    verb = 'wield'
+
+
 class Deteriorates(object):
     def __init__(self):
         self.usages = 0
@@ -78,14 +86,18 @@ class Deteriorates(object):
     def plural(self, n):
         return self._add_icon(self.abstract_plural % (n, self.condition))
 
+    @property
+    def descr(self):
+        return self.name_with_condition
 
-class Spindle(Deteriorates, Commodity):
+
+class Spindle(Deteriorates, Commodity, Wieldables):
     max_usages = 3
     abstract_name = 'a%s spindle'
     abstract_plural = '%d%s spindles'
 
 
-class Shovel(Deteriorates, Commodity):
+class Shovel(Deteriorates, Commodity, Wieldables):
     max_usages = 5
     abstract_name = 'a%s shovel'
     abstract_plural = '%d%s shovels'

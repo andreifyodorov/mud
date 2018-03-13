@@ -1,4 +1,4 @@
-from .commodities import Commodity, Deteriorates
+from .commodities import Commodity, Wearables, Wieldables, Deteriorates
 from .utils import pretty_list
 from itertools import chain
 
@@ -91,13 +91,37 @@ class StateMutator(object):
             self.anounce('eats %s.' % pretty_list(items))
         return items
 
-    def wear(self, item):
-        if self.actor.wears is not None:
-            self.actor.bag.add(self.actor.wears)
+    def _relocate_to_slot(self, slot, item):
+        current = getattr(self.actor, slot)
+        if current is item:
+            return False
         items = self._relocate(item, self.actor.bag)
-        if items:
-            self.actor.wears, = items
-        return items
+        if not items:
+            return False
+        item, = items
+        setattr(self.actor, slot, item)
+        if current is not None:
+            self.actor.bag.add(current)
+        return True
+
+    def wear(self, item):
+        if isinstance(item, Wearables) and self._relocate_to_slot('wears', item):
+            self.anounce('wears %s.' % item.name)
+            return True
+        return False
+
+    def wield(self, item):
+        if isinstance(item, Wieldables) and self._relocate_to_slot('wields', item):
+            self.anounce('wields %s.' % item.name)
+            return True
+        return False
+
+    def unequip(self):
+        item = self.actor.wields
+        if item:
+            self.actor.wields = None
+            self.actor.bag.add(item)
+            return item
 
     def barter(self, counterparty, what, for_what):
         if (counterparty.barters
@@ -146,7 +170,11 @@ class StateMutator(object):
         # get required/optional tools
         tools = {}
         for t in means.optional_tools | means.required_tools:
-            tool = next(self.actor.bag.filter(t), None)
+            tool = None
+            if isinstance(self.actor.wields, t):
+                tool = self.actor.wields
+            else:
+                tool = next(self.actor.bag.filter(t), None)
             if tool:
                 tools[t] = tool
             elif t in means.required_tools:
@@ -173,19 +201,38 @@ class StateMutator(object):
             return
         fruits = [fruit_or_fruits] if isinstance(fruit_or_fruits, Commodity) else fruit_or_fruits
 
+        if tools:
+            tool, = tools.values()
+            self.wield(tool)
+            self.deteriorate(tool)
+
         self.actor.last_success_time = self.world.time
         self.anounce('%ss %s.' % (means.verb, pretty_list(fruits)))
         self.actor.bag.update(fruits)
 
-        for tool in tools.itervalues():
-            if isinstance(tool, Deteriorates):
-                tool.usages += 1
-                if tool.usages >= tool.max_usages:
-                    self.deteriorate(tool)
-
         return fruits
 
+
     def deteriorate(self, commodity):
-        if hasattr(commodity, 'deteriorates_into'):
-            self.actor.bag.add(commodity.deteriorates_into())
-        self._relocate(commodity, self.actor.bag)
+        if not isinstance(commodity, Deteriorates):
+            return
+
+        commodity.usages += 1
+        if commodity.usages >= commodity.max_usages:
+            replace = None
+            if hasattr(commodity, 'deteriorates_into'):
+                replace = commodity.deteriorates_into()
+
+            if self.actor.wears is commodity:
+                self.actor.wears = replace
+
+            elif self.actor.wields is commodity:
+                self.actor.wields = replace
+
+            elif commodity in self.actor.bag:
+                self._relocate(commodity, self.actor.bag)
+                if replace:
+                    self.actor.bag.add(replace)
+
+            return replace
+        return True

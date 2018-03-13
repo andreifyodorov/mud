@@ -368,8 +368,15 @@ class Chatflow(StateMutator):
                     lambda *args:
                         "You have nothing you can %s." % cls.verb
                         if not any(self.actor.bag.filter(cls))
-                        else self.choice(cls.verb, lambda i: self.use_commodity(cls, i),
+                        else self.choice(cls.verb, lambda i: self.use_commodity(cls.verb, i),
                                          self.actor.bag.filter(cls), skip_single=True)(*args))
+
+            yield (
+                'unequip',
+                lambda *args:
+                    self.unequip(*args)
+                    if self.actor.wields
+                    else "You aren't wielding anything.")
 
             for means in self.location.means:
                 yield means.verb, lambda: self.produce(means)
@@ -414,15 +421,19 @@ class Chatflow(StateMutator):
                 return
             yield "In your bag you have %s." % pretty_list(actor.bag)
             if actor.wears:
-                yield "You wear %s." % actor.wears.name
+                yield "You wear %s." % actor.wears.descr
             else:
                 yield "You are naked."
+            if actor.wields:
+                yield "You wield %s. You can %sunequip it." % (actor.wields.descr, self.cmd_pfx)
         else:
             yield "You see %s." % actor.descr
             if actor.wears:
-                yield "%s wears %s." % (actor.Name, actor.wears.name)
+                yield "%s wears %s." % (actor.Name, actor.wears.descr)
             else:
                 yield "%s is naked." % actor.Name
+            if actor.wields:
+                yield "%s wields %s." % (actor.Name, actor.wields.descr)
 
 
     def get_barter_chain(self):
@@ -550,20 +561,27 @@ class Chatflow(StateMutator):
         if super(Chatflow, self).go(direction):
             return self.where()
 
-
     def pick(self, item_or_items):
         items = super(Chatflow, self).pick(item_or_items)
         yield "You put %s into your %sbag." % (pretty_list(items), self.cmd_pfx)
-
 
     def drop(self, item_or_items):
         items = super(Chatflow, self).drop(item_or_items)
         yield "You drop %s on the ground." % pretty_list(items)
 
+    def wield(self, item):
+        # This, a bit hacky method, gets called from produce
+        if super(Chatflow, self).wield(item):
+            self.actor.send("You wield %s." % item.name)
 
-    def use_commodity(self, cls, item_or_items):
-        items = getattr(super(Chatflow, self), cls.verb)(item_or_items)
-        yield "You %s %s." % (cls.verb, pretty_list(items))
+    def unequip(self):
+        item = super(Chatflow, self).unequip()
+        if item:
+            yield "You put %s back into your %sbag." % (item.name, self.cmd_pfx)
+
+    def use_commodity(self, verb, item_or_items):
+        if getattr(super(Chatflow, self), verb)(item_or_items):
+            yield "You %s %s." % (verb, pretty_list(item_or_items))
 
 
     def bag(self):
@@ -614,10 +632,11 @@ class Chatflow(StateMutator):
         return "You %s %s. You put %s into your %sbag." \
                % (means.verb, pretty_list(fruits), pronoun, self.cmd_pfx)
 
+
     def deteriorate(self, commodity):
-        super(Chatflow, self).deteriorate(commodity)
-        if hasattr(commodity, 'deteriorates_into'):
-            self.actor.send(
-                "%s turns into %s." % (commodity.Name, commodity.deteriorates_into.name))
-        else:
+        result = super(Chatflow, self).deteriorate(commodity)
+        if isinstance(result, Commodity):
+            self.actor.send("%s turns into %s." % (commodity.Name, result.name))
+        elif result is None:
             self.actor.send("%s disintegrates." % commodity.Name)
+

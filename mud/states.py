@@ -68,6 +68,7 @@ class ActorState(State):
         self.bag = FilterSet()
         self.credits = 0
         self.wears = None
+        self.wields = None
         self.last_success_time = None
 
     @property

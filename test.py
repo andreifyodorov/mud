@@ -158,8 +158,10 @@ class ChatflowTestCase(unittest.TestCase):
         self.assertReplyContains('tunic', '/bag')
         self.assertEqual(spindle.usages, 1)
 
-        self.send('/bag')
-        self.assertReplyContains('used')  # tool wear out
+        self.send('/me')
+        self.assertReplyContains('used', 'spindle')  # tool wear out
+        self.assertIs(self.player.wields, spindle)
+        self.assertFalse(spindle in self.player.bag)
 
         self.send('/wear')
         self.assertReplyContains('tunic')
@@ -173,9 +175,9 @@ class ChatflowTestCase(unittest.TestCase):
         self.storage.world.time += 1
         self.player.bag.update((Cotton(), Cotton()))
         self.send('/spin')
-        self.assertReplyContains('tunic')
+        self.assertReplyContains('disintegrates', 'tunic')
         self.assertEqual(spindle.usages, 3)
-        self.assertFalse(spindle in self.player.bag)
+        self.assertIsNone(self.player.wields)
 
         self.send('/exit')
         self.assertReplyContains('village', '/north')
@@ -206,11 +208,11 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('/south')
         self.send('/south')
 
-        for _ in range(5):
+        for n in range(5):
             self.storage.world.time += 1
             self.send('/farm')
-
-        self.assertFalse(shovel in self.player.bag)
+            self.assertIs(self.player.wields, shovel if n < 4 else None)
+            self.assertFalse(shovel in self.player.bag)
 
 
 
