@@ -602,7 +602,7 @@ class Chatflow(StateMutator):
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
             yield "In your bag there's nothing but %s. You can %s it."  \
-                % (item.name, actions_sentence)
+                % (item.descr, actions_sentence)
             yield credits_message
         else:
             yield "You look into your bag and see:"
@@ -634,9 +634,6 @@ class Chatflow(StateMutator):
 
 
     def deteriorate(self, commodity):
-        result = super(Chatflow, self).deteriorate(commodity)
-        if isinstance(result, Commodity):
-            self.actor.send("%s turns into %s." % (commodity.Name, result.name))
-        elif result is None:
-            self.actor.send("%s disintegrates." % commodity.Name)
+        if super(Chatflow, self).deteriorate(commodity):
+            self.actor.send(commodity.deteriorate('Your'))
 

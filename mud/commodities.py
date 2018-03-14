@@ -43,6 +43,7 @@ conditions = [
     'falling apart',
 ]
 
+
 def condition(usage, max_usage):
     """
     >>> condition(1, 3)
@@ -90,17 +91,50 @@ class Deteriorates(object):
     def descr(self):
         return self.name_with_condition
 
+    def deteriorate(self, owner):
+        """
+        >>> Spindle().deteriorate('His')
+        'His spindle disintegrates.'
+
+        >>> RoughspunTunic().deteriorate('Her')
+        'Her old roughspun tunic turns into dirty rags.'
+
+        >>> Test = type('Test', (Commodity, Deteriorates), dict(abstract_name='object'))
+        >>> Test().deteriorate('Our')
+        'Object disintegrates.'
+
+        >>> Foobar = type('Foobar', (Commodity, Deteriorates),
+        ...               dict(abstract_name='foobar', deteriorates_into=Test))
+        >>> Foobar().deteriorate('Our')
+        'Foobar deteriorates into object.'
+
+        """
+
+        if hasattr(self, 'deteriorates_into'):
+            into = self.deteriorates_into.abstract_name
+            if hasattr(self, 'deteriorate_message'):
+                return self.deteriorate_message % (owner, into)
+            else:
+                return "%s deteriorates into %s." % (self.Name, into)
+        else:
+            if hasattr(self, 'deteriorate_message'):
+                return self.deteriorate_message % owner
+            else:
+                return "%s disintegrates." % self.Name
+
 
 class Spindle(Deteriorates, Commodity, Wieldables):
     max_usages = 3
     abstract_name = 'a%s spindle'
     abstract_plural = '%d%s spindles'
+    deteriorate_message = '%s spindle disintegrates.'
 
 
 class Shovel(Deteriorates, Commodity, Wieldables):
     max_usages = 5
     abstract_name = 'a%s shovel'
     abstract_plural = '%d%s shovels'
+    deteriorate_message = '%s shovel falls apart.'
 
 
 class Wearables(ActionClasses):
@@ -119,6 +153,7 @@ class RoughspunTunic(Deteriorates, Commodity, Wearables):
     abstract_plural = '%d%s roughspun tunics'
     max_usages = 50
     deteriorates_into = DirtyRags
+    deteriorate_message = '%s old roughspun tunic turns into %s.'
 
 
 class Overcoat(Commodity, Wearables):

@@ -22,6 +22,9 @@ class NpcMutator(StateMutator):
                 del self.actor.counters[counter]
             return True
 
+    def is_(self, doing):
+        return doing in self.actor.counters
+
     def is_done(self, doing, doing_descr, done_in):
         if doing not in self.actor.counters:
             self.set_counter(doing, done_in)
@@ -97,25 +100,36 @@ class PeasantMutator(NpcMutator):
                 self.set_counter("hungry", 100)
 
         if self.actor.tired:
-            if self.actor.location is Field:
-                if self.is_done("walking", "tired and going home", 5):
-                    self.go('north')
+            if (self.actor.location is Field
+                    and self.is_done("walking", "tired and going home", 5)):
+                self.go('north')
 
-            if self.actor.location is Village:
-                if self.is_done("walking", "tired and going home", 5):
-                    self.go('enter')
+            if (self.actor.location is Village
+                    and self.is_done("walking", "tired and going home", 5)):
+                self.go('enter')
 
-            if self.actor.location is VillageHouse:
-                if self.is_done("resting", "resting", 20):
-                    self.actor.tired = False
-                    self.set_counter("tired", 100)
+            if (self.actor.location is VillageHouse
+                    and self.is_done("resting", "resting", 20)):
+                self.actor.tired = False
+                self.set_counter("tired", 100)
 
         if (self.actor.location is VillageHouse
-                and not next(self.actor.bag.filter(Spindle), None)):
-            if self.is_done("crafting", "making a spindle", 10):
-                spindle = Spindle()
-                self.actor.bag.add(spindle)
-                self.anounce("makes %s." % spindle.name)
+                and not any(self.actor.bag.filter(Spindle))
+                and self.is_done("crafting", "making a spindle", 10)):
+            spindle = Spindle()
+            self.actor.bag.add(spindle)
+            self.anounce("makes %s." % spindle.name)
+
+        if isinstance(self.actor.wears, DirtyRags) and not self.is_("walking"):
+            tunic = next(self.actor.bag.filter(RoughspunTunic), None)
+            if tunic:
+                self.wear(tunic)
+            elif self.actor.location is VillageHouse:
+                distaff, = self.location.means
+                if (self.can_produce(distaff)
+                        and self.is_done("crafting", "spining a yarn", 20)):
+                    self.produce(distaff)
+                    self.unequip()
 
         count_edibles = len(list(self.actor.bag.filter(Edibles)))
         if not self.actor.accumulate and count_edibles <= 1:
@@ -124,24 +138,24 @@ class PeasantMutator(NpcMutator):
             self.actor.accumulate = False
 
         if self.actor.accumulate:
-            if self.actor.location is VillageHouse:
-                if self.is_done("walking", "going to a field", 5):
-                    self.go('exit')
+            if (self.actor.location is VillageHouse
+                    and self.is_done("walking", "going to a field", 5)):
+                self.go('exit')
 
-            if self.actor.location is Village:
-                if self.is_done("walking", "going to a field", 5):
-                    self.go('south')
+            if (self.actor.location is Village
+                    and self.is_done("walking", "going to a field", 5)):
+                self.go('south')
 
-            if self.actor.location is Field:
-                if self.is_done("farming", "farming", 20):
-                    field, = self.location.means
-                    self.produce(field)
+            if (self.actor.location is Field
+                    and self.is_done("farming", "farming", 20)):
+                field, = self.location.means
+                self.produce(field)
 
 
 class PeasantState(NpcState):
     mutator_class = PeasantMutator
     abstract_name = "a peasant"
-    definite_name = "the peasant"
+    definite_name = "the peasant"  # "Jack the peasant"
     icon = u'👵'
 
     @property

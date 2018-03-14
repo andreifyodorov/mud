@@ -58,6 +58,7 @@ class StateMutator(object):
         self.actor.location = new
         self.anounce('arrives from %s.' % old.name)
         self.location.actors.add(self.actor)
+        self.deteriorate(self.actor.wears)
         return True
 
     def _relocate(self, item_or_items, source, destination=None, dry=False):
@@ -119,6 +120,7 @@ class StateMutator(object):
     def unequip(self):
         item = self.actor.wields
         if item:
+            self.anounce('puts away %s.' % item.name)
             self.actor.wields = None
             self.actor.bag.add(item)
             return item
@@ -164,11 +166,11 @@ class StateMutator(object):
         counterparty.credits += price
         return True
 
-    def produce(self, means, missing=None):
+    def produce_missing(self, means, missing=None):
         if missing is None:
             missing = []
-        # get required/optional tools
         tools = {}
+        # get required/optional tools
         for t in means.optional_tools | means.required_tools:
             tool = None
             if isinstance(self.actor.wields, t):
@@ -188,14 +190,24 @@ class StateMutator(object):
             else:
                 missing.extend([t] * (n - len(l)))
         # do we miss something?
+        return missing, tools, materials
+
+
+    def can_produce(self, means):
+        missing, tools, materials = self.produce_missing(means)
+        return False if missing else True
+
+
+    def produce(self, means, missing=None):
+        missing, tools, materials = self.produce_missing(means, missing)
         if missing:
             return
-        # not too often
+
         if self.actor.last_success_time and self.actor.last_success_time == self.world.time:
             return
-        # remove materials from the world
+
         self._relocate(chain.from_iterable(materials.itervalues()), self.actor.bag)
-        # be fruitful
+
         fruit_or_fruits = means.produce(tools, materials)
         if fruit_or_fruits is None:
             return
@@ -205,6 +217,8 @@ class StateMutator(object):
             tool, = tools.values()
             self.wield(tool)
             self.deteriorate(tool)
+        else:
+            self.unequip()
 
         self.actor.last_success_time = self.world.time
         self.anounce('%ss %s.' % (means.verb, pretty_list(fruits)))
@@ -215,24 +229,29 @@ class StateMutator(object):
 
     def deteriorate(self, commodity):
         if not isinstance(commodity, Deteriorates):
-            return
+            return False
 
         commodity.usages += 1
-        if commodity.usages >= commodity.max_usages:
-            replace = None
-            if hasattr(commodity, 'deteriorates_into'):
-                replace = commodity.deteriorates_into()
+        if commodity.usages < commodity.max_usages:
+            return False
 
-            if self.actor.wears is commodity:
-                self.actor.wears = replace
+        replace = None
+        if hasattr(commodity, 'deteriorates_into'):
+            replace = commodity.deteriorates_into()
 
-            elif self.actor.wields is commodity:
-                self.actor.wields = replace
+        if self.actor.wears is commodity:
+            self.actor.wears = replace
 
-            elif commodity in self.actor.bag:
-                self._relocate(commodity, self.actor.bag)
-                if replace:
-                    self.actor.bag.add(replace)
+        elif self.actor.wields is commodity:
+            self.actor.wields = replace
 
-            return replace
+        elif commodity in self.actor.bag:
+            self._relocate(commodity, self.actor.bag)
+            if replace:
+                self.actor.bag.add(replace)
+
+        self.location.broadcast(commodity.deteriorate("%s's" % self.actor.name),
+                                skip_sender=self.actor)
+
         return True
+

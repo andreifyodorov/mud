@@ -8,7 +8,7 @@ from storage import Storage
 from migrate import migrations
 from mud.chatflow import Chatflow, CommandPrefix
 from mud.states import PlayerState
-from mud.commodities import Vegetable, Cotton, Spindle, Shovel
+from mud.commodities import Vegetable, Cotton, Spindle, Shovel, DirtyRags, RoughspunTunic
 from mud.npcs import PeasantState
 
 
@@ -31,6 +31,9 @@ class MockSendMessage(object):
         if not self.messages:
             raise StopIteration
         return self.messages.pop(0)
+
+    def dump(self):
+        print "\n".join(self.messages)
 
 
 class MockLockObject(object):
@@ -83,6 +86,27 @@ class ChatflowTestCase(unittest.TestCase):
     def send(self, cmd):
         self.chatflow.process_message(cmd)
 
+    def cycle(self, loop, cond, error_message, max_cycles=100):
+        i = 0
+        while i < max_cycles:
+            loop()
+            if cond():
+                break
+            i += 1
+        else:
+            raise AssertionError("%s in %d cycles" % (error_message, i))
+
+
+    def get_option(self, match):
+        option = None
+        for lines in self.messages:
+            for line in lines.split("\n"):
+                if match in line:
+                    option = line[:2]
+        self.assertTrue(option is not None)
+        return option
+
+
     def test_01_start(self):
         self.send('/start')
         self.assertFalse(self.player.alive)
@@ -115,20 +139,48 @@ class ChatflowTestCase(unittest.TestCase):
 
     def test_03_peasant_ai(self):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
-        i = 0
-        while i < 100:
-            self.storage.world.enact()
-            if (any(peasant.bag.filter(Spindle))
-                    and peasant.location == self.player.location):
-                break
-            i += 1
-        else:
-            raise AssertionError("Peasant didn't make a spindle in %d cycles" % i)
+        mutator = peasant.get_mutator(self.storage.world)
+
+        self.send('/north')
+        self.send('/enter')
+
+        self.cycle(
+            lambda: mutator.deteriorate(peasant.wears),
+            lambda: isinstance(peasant.wears, DirtyRags),
+            "Peasant's tunic did not deteriorate")
+
+        self.cycle(
+            self.storage.world.enact,
+            lambda: peasant.location == self.player.location,
+            "Peasant didn't return to the house")
+
+        self.cycle(
+            self.storage.world.enact,
+            lambda: any(peasant.bag.filter(Spindle)),
+            "Peasant didn't make a spindle")
+
+        peasant.bag.update([Cotton(), Cotton()])
+        self.cycle(
+            self.storage.world.enact,
+            lambda: isinstance(peasant.wears, RoughspunTunic),
+            "Peasant didn't spin a tunic",
+            max_cycles=200)
+
+        self.assertEqual(next(peasant.bag.filter(Spindle)).usages, 1)
+
+        self.send('/exit')
+        self.send('/south')
+
+        self.cycle(
+            self.storage.world.enact,
+            lambda: peasant.location == self.player.location,
+            "Peasant didn't return to a field")
+
 
     def test_04_barter(self):
+        peasant, = self.chatflow.location.actors.filter(PeasantState)
         self.send('/barter')
-        self.assertReplyContains('/1', 'spindle')
-        self.send('/1')
+        self.send(self.get_option('spindle'))
         self.assertReplyContains('/1')
         self.send('/1')
         self.assertReplyContains('spindle')
@@ -156,21 +208,15 @@ class ChatflowTestCase(unittest.TestCase):
         self.player.bag.update((Cotton(), Cotton()))
         self.send('/spin')
         self.assertReplyContains('tunic', '/bag')
-        self.assertEqual(spindle.usages, 1)
+        self.assertEqual(spindle.usages, 2)
 
         self.send('/me')
-        self.assertReplyContains('used', 'spindle')  # tool wear out
+        self.assertReplyContains('falling apart spindle')  # tool wear out
         self.assertIs(self.player.wields, spindle)
         self.assertFalse(spindle in self.player.bag)
 
         self.send('/wear')
         self.assertReplyContains('tunic')
-
-        self.storage.world.time += 1
-        self.player.bag.update((Cotton(), Cotton()))
-        self.send('/spin')
-        self.assertReplyContains('tunic')
-        self.assertEqual(spindle.usages, 2)
 
         self.storage.world.time += 1
         self.player.bag.update((Cotton(), Cotton()))
