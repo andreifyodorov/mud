@@ -628,7 +628,7 @@ class Chatflow(StateMutator):
 
         if not fruits:
             if missing:
-                return "You need %s to %s." % (pretty_list(missing), means.verb)
+                return "You need %s to %s." % (pretty_list(i() for i in missing), means.verb)
             else:
                 return "You fail to %s anything." % means.verb
 
