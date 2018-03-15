@@ -102,21 +102,25 @@ class Storage(object):
             classname = cls.__name__
             for key, entity in self.entities[classname].iteritems():
                 serialized = self.serialize_state(entity)
-                if serialized:
-                    yield self._entity_key % (classname, key), serialized
+                yield self._entity_key % (classname, key), serialized
+
         yield "world", self.serialize_state(self.world)
         yield "version", self.version
 
 
     def save(self):
         for k, v in self.dump():
-            self.redis.set(k, repr(v))
+            if v:
+                self.redis.set(k, repr(v))
+            else:
+                self.redis.delete(k)
         self.lock_object.release()
 
 
     def print_dump(self):
         for k, v in self.dump():
-            print "%s\t%s" % (k, pprint.pformat(v))
+            if v:
+                print "%s\t%s" % (k, pprint.pformat(v))
 
 
     def deserialize_state(self, state, data):
