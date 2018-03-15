@@ -19,10 +19,11 @@ app = Flask(__name__)
 @app.route('/' + settings.TOKEN, methods=['POST'])
 def webhook():
     update = telegram.update.Update.de_json(request.get_json(force=True), bot)
-    message = update.message.text
-    chatkey = update.message.chat_id
 
-    if message is not None:
+    if update.message is not None:
+        message = update.message.text
+        chatkey = update.message.chat_id
+
         storage = Storage(bot.send_callback_factory)
         chatflow = Chatflow(storage.get_player_state(chatkey), storage.world, bot.cmd_pfx)
         chatflow.process_message(message)
