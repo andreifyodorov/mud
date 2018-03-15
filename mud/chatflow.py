@@ -286,9 +286,13 @@ class Chatflow(StateMutator):
 
     def get_commands(self):
         yield 'help', self.help
-
-        if self.actor.name:
-            yield 'me', lambda: self.look(self.actor)
+        yield (
+            'me',
+            lambda *args:
+                self.look(self.actor)
+                if self.actor.name
+                else self.input('name', self.name, "You didn't introduce yourself yet. "
+                                "Please tell me your name.")(*args))
 
         if self.actor.alive:
             yield (
