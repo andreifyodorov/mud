@@ -37,6 +37,13 @@ def webhook():
 def enact(*args):
     storage = Storage(bot.send_callback_factory)
     storage.world.enact()
+
+    for player in storage.world.all_players():
+        print player.last_command_time, storage.world.time
+        if (player.last_command_time is not None
+                and storage.world.time - player.last_command_time > 10):
+            Chatflow(player, storage.world, bot.cmd_pfx).sleep()
+
     storage.save()
     bot.send_messages()
 

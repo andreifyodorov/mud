@@ -198,6 +198,7 @@ class Storage(object):
 
 
     def all_players(self):
+        # this is different from world.all_players() because of players in limbo
         keys = (key.split(":", 1) for key in self.redis.keys(self._player_key % "*"))
         for prefix, chatkey in keys:
             yield self.get_player_state(self.chatkey_type(chatkey))

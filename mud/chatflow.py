@@ -257,6 +257,7 @@ class Chatflow(StateMutator):
     def dispatch(self, command, *args, **kwargs):
         for cmd, handler in self.get_commands():
             if cmd == command:
+                self.wakeup()
                 return handler(*args, **kwargs)
         raise UnknownChatflowCommand
 
@@ -288,11 +289,12 @@ class Chatflow(StateMutator):
         yield 'help', self.help
         yield (
             'me',
-            lambda *args:
+            lambda:
                 self.look(self.actor)
                 if self.actor.name
-                else self.input('name', self.name, "You didn't introduce yourself yet. "
-                                "Please tell me your name.")(*args))
+                else self.input('name', self.name,
+                                "You didn't introduce yourself yet. "
+                                "Please tell me your name.")())
 
         if self.actor.alive:
             yield (
@@ -384,6 +386,14 @@ class Chatflow(StateMutator):
 
             for means in self.location.means:
                 yield means.verb, lambda: self.produce(means)
+
+
+            yield (
+                'sleep',
+                lambda *args:
+                    self.sleep(*args)
+                    if not self.actor.asleep
+                    else "You're alreay asleep.")
 
             return
 
@@ -641,3 +651,13 @@ class Chatflow(StateMutator):
         if super(Chatflow, self).deteriorate(commodity):
             self.actor.send(commodity.deteriorate('Your'))
 
+    def sleep(self):
+        if not self.actor.asleep:
+            self.actor.asleep = True
+            self.actor.send("You fall asleep.")
+
+    def wakeup(self):
+        self.actor.last_command_time = self.world.time
+        if self.actor.asleep:
+            self.actor.asleep = False
+            self.actor.send("You wake up.")

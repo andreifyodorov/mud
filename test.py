@@ -205,6 +205,9 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('/enter')
         self.assertReplyContains('/spin')
 
+        self.send('/spin')
+        self.assertReplyContains('2 balls of cotton')
+
         self.player.bag.update((Cotton(), Cotton()))
         self.send('/spin')
         self.assertReplyContains('tunic', '/bag')

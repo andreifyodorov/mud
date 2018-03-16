@@ -21,7 +21,7 @@ class Bot(telegram.Bot):
     def send_messages(self):
         while self.message_queue:
             chat_id, messages = self.message_queue.popitem()
-            text = "\n".join(messages)
+            text = "\n\n".join(messages)
             self.sendMessage(parse_mode="Markdown", chat_id=chat_id, text=text)
 
 

@@ -110,6 +110,13 @@ def migrate_6(storage):
         storage.world[Factory.id].means.add(Workbench())
 
 
+@version
+def migrate_7(storage):
+    for player in storage.all_players():
+        if player.last_command_time is None:
+            player.last_command_time = storage.world.time
+
+
 def dry_send_callback_factory(chatkey):
     def callback(msg):
         print "%s\t%s" % (chatkey, msg)

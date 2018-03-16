@@ -22,6 +22,9 @@ class World(dict):
     def all_npcs(self):
         return (a for l in self.values() for a in l.actors.filter(NpcMixin))
 
+    def all_players(self):
+        return (a for l in self.values() for a in l.actors.filter(PlayerState))
+
     def enact(self):
         self.time = self.time or 0
         npcs = set(self.all_npcs())  # npc can change location
@@ -98,6 +101,8 @@ class PlayerState(ActorState):
     def __init__(self, send_callback):
         super(PlayerState, self).__init__()
         self.send = send_callback or (lambda message: None)
+        self.asleep = False
+        self.last_command_time = None
         self.input = {}
         self.chain = {}
 
@@ -111,6 +116,6 @@ class WorldState(State):
 
     def broadcast(self, message, skip_sender=None):
         for actor in self.actors.filter(PlayerState):
-            if skip_sender is not None and actor is skip_sender:
+            if skip_sender is not None and actor is skip_sender or actor.asleep:
                 continue
             actor.send(message)
