@@ -39,7 +39,6 @@ def enact(*args):
     storage.world.enact()
 
     for player in storage.world.all_players():
-        print player.last_command_time, storage.world.time
         if (player.last_command_time is not None
                 and storage.world.time - player.last_command_time > 10):
             Chatflow(player, storage.world, bot.cmd_pfx).sleep()
