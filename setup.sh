@@ -3,11 +3,19 @@
 set -o errexit
 set -o pipefail
 
+if [[ $1 ]]; then
+	PYTHON=$1
+else
+	PYTHON=$(which python)
+fi
+
+echo "Using python executable: $PYTHON"
+
 app=$(basename $(pwd))
 
 virtualenv=$HOME/virtualenv/$app
 rm -rf $virtualenv
 mkdir -p $virtualenv
-virtualenv $virtualenv
+$PYTHON $(which virtualenv) $virtualenv
 . $virtualenv/bin/activate
 pip install -r requirments.txt
