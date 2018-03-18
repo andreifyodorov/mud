@@ -1,5 +1,4 @@
-# coding: utf8
-from itertools import groupby, chain, izip_longest
+from itertools import groupby, chain
 
 from .mutators import StateMutator
 from .locations import StartLocation, Direction
@@ -9,7 +8,7 @@ from .utils import list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
 
 
-class CommandPrefix(unicode):
+class CommandPrefix(str):
     def is_cmd(self, arg):
         return arg and (not self or arg.startswith(self))
 
@@ -70,7 +69,7 @@ class ChoiceHandler(InputHandler):
         item = None
         if self.skip_single and len(self.bag) == 1:
             caption, item = self.bag.pop(0)
-        elif isinstance(arg, basestring) and arg.isdigit() and arg != '0':
+        elif isinstance(arg, str) and arg.isdigit() and arg != '0':
             try:
                 name, item = self.bag[int(arg) - 1]
             except:
@@ -264,7 +263,7 @@ class Chatflow(StateMutator):
 
 
     def reply(self, result):
-        if isinstance(result, basestring):
+        if isinstance(result, str):
             self.actor.send(result)
         elif result is not None:
             self.actor.send("\n".join(result))
@@ -572,7 +571,7 @@ class Chatflow(StateMutator):
                 actor_groups = (others.filter(cls) for cls in (NpcMixin, PlayerState))
                 for actor_group in actor_groups:
                     for actor in sorted(actor_group, key=lambda a: a.name):
-                        yield u"  • %s" % actor.descr
+                        yield "  • %s" % actor.descr
             else:
                 for actor in others:
                     yield "You see %s." % actor.descr

@@ -28,9 +28,9 @@ if [[ $1 == '--uwsgi' ]]; then
 		--manage-script-name \
 		--mount /=app:app \
 		--http-socket localhost:5000 \
-		--plugin python \
+		--plugin python3 \
 		--virtualenv $virtualenv
 else
 	# run local server
-	FLASK_APP=app.py FLASK_DEBUG=1 IS_PLAYGROUND=1 python -m flask run
+	FLASK_APP=app.py FLASK_DEBUG=1 IS_PLAYGROUND=1 flask run
 fi

@@ -1,4 +1,3 @@
-# coding: utf-8
 from .locations import Location
 from .utils import FilterSet
 

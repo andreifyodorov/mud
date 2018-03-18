@@ -183,7 +183,7 @@ class StateMutator(object):
                 missing.append(t)
         # get required materials
         materials = {}
-        for t, n in means.required_materials.iteritems():
+        for t, n in means.required_materials.items():
             l = list(self.actor.bag.filter(t))
             if len(l) >= n:
                 materials[t] = l[:n]
@@ -206,7 +206,7 @@ class StateMutator(object):
         if self.actor.last_success_time and self.actor.last_success_time == self.world.time:
             return
 
-        self._relocate(chain.from_iterable(materials.itervalues()), self.actor.bag)
+        self._relocate(chain.from_iterable(materials.values()), self.actor.bag)
 
         fruit_or_fruits = means.produce(tools, materials)
         if fruit_or_fruits is None:

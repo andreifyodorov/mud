@@ -1,4 +1,3 @@
-# coding: utf8
 from .states import State
 
 
@@ -25,7 +24,7 @@ class Edibles(ActionClasses):
 
 
 class Vegetable(Commodity, Edibles):
-    icon = u'🥕'
+    icon = '🥕'
     abstract_name = 'a vegetable'
     abstract_plural = '%d vegetables'
 
@@ -142,14 +141,14 @@ class Wearables(ActionClasses):
 
 
 class DirtyRags(Commodity, Wearables):
-    icon = u'🧦'
+    icon = '🧦'
     abstract_name = 'dirty rags'
     abstract_plural = '%d sets of dirty rags'
 
 
 class RoughspunTunic(Deteriorates, Commodity, Wearables):
-    icon = u'👚'
-    abstract_name = u'a%s roughspun tunic'
+    icon = '👚'
+    abstract_name = 'a%s roughspun tunic'
     abstract_plural = '%d%s roughspun tunics'
     max_usages = 50
     deteriorates_into = DirtyRags
@@ -157,16 +156,16 @@ class RoughspunTunic(Deteriorates, Commodity, Wearables):
 
 
 class Overcoat(Commodity, Wearables):
-    icon = u'🧥'
+    icon = '🧥'
     abstract_name = 'an overcoat'
 
 
 class Overalls(Commodity, Wearables):
-    icon = u'👖'
+    icon = '👖'
     abstract_name = 'overalls'
     abstract_plural = '%d sets of overalls'
 
 
 class FlamboyantAttire(Commodity, Wearables):
-    icon = u'🎩'
+    icon = '🎩'
     abstract_name = 'flamboyant attire'

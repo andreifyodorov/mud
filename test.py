@@ -27,13 +27,13 @@ class MockSendMessage(object):
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         if not self.messages:
             raise StopIteration
         return self.messages.pop(0)
 
     def dump(self):
-        print "\n".join(self.messages)
+        print("\n".join(self.messages))
 
 
 class MockLockObject(object):
@@ -81,7 +81,7 @@ class ChatflowTestCase(unittest.TestCase):
     def assertReplyContains(self, *args):
         messages = "\n".join(self.messages)
         for pattern in args:
-            self.assertRegexpMatches(messages, pattern)
+            self.assertRegex(messages, pattern)
 
     def send(self, cmd):
         self.chatflow.process_message(cmd)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf8
 
 from mud.chatflow import Chatflow
 from mud.locations import Field, TownGate, VillageHouse, MarketSquare, Factory
@@ -49,9 +48,9 @@ def migrate_3(storage):
     for player in storage.all_players():
         player.send(
             "Game updated to version 3. Changes:\n"
-            u"• New locations: a town gate, a market square.\n"
-            u"• New NPC: a guard.\n"
-            u"• Cotton is now more rare")
+            "• New locations: a town gate, a market square.\n"
+            "• New NPC: a guard.\n"
+            "• Cotton is now more rare")
 
     guard = GuardState()
     guard.get_mutator(storage.world).spawn(TownGate)
@@ -62,9 +61,9 @@ def migrate_4(storage):
     for player in storage.all_players():
         player.send(
             "Game updated to version 4. News:\n"
-            u"• Wearables and crafting them\n"
-            u"• Barter with NPCs\n"
-            u"• Try to make it to market square!")
+            "• Wearables and crafting them\n"
+            "• Barter with NPCs\n"
+            "• Try to make it to market square!")
 
     for actor in storage.all_players():
         actor.wears = DirtyRags()
@@ -99,9 +98,9 @@ def migrate_6(storage):
     for player in storage.all_players():
         player.send(
             "Game updated to version 6. News:\n"
-            u"• Factory district\n"
-            u"• Shovel production to foster agriculture\n"
-            u"• Tools wear out")
+            "• Factory district\n"
+            "• Shovel production to foster agriculture\n"
+            "• Tools wear out")
 
     guard = GuardState()
     guard.get_mutator(storage.world).spawn(MarketSquare)
@@ -119,7 +118,7 @@ def migrate_7(storage):
 
 def dry_send_callback_factory(chatkey):
     def callback(msg):
-        print "%s\t%s" % (chatkey, msg)
+        print(chatkey, msg, sep="\t")
     return callback
 
 
@@ -130,12 +129,12 @@ def migrate(dry_run=True):
     old_version = version
 
     if dry_run:
-        print "No worries, it's a dry run"
+        print("No worries, it's a dry run")
 
     version = version or 0
-    print "Current version is %d" % version
+    print(f"Current version is {version}")
     while len(migrations) > version:
-        print "Migrating storage from version %d to %d" % (version, version + 1)
+        print("Migrating storage from version {version:d} to {version + 1:d}")
         migrations[version](storage)
         version += 1
 

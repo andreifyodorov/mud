@@ -1,4 +1,3 @@
-# coding: utf8
 from .states import ActorState, PlayerState, NpcMixin
 from .mutators import StateMutator, ExitGuardMixin
 from .commodities import Edibles, DirtyRags, Overcoat, FlamboyantAttire, RoughspunTunic, Spindle
@@ -156,7 +155,7 @@ class PeasantState(NpcState):
     mutator_class = PeasantMutator
     abstract_name = "a peasant"
     definite_name = "the peasant"  # "Jack the peasant"
-    icon = u'👵'
+    icon = '👵'
 
     @property
     def barters(self):
@@ -185,7 +184,7 @@ class GuardMutator(StateMutator):
 class GuardState(NpcState, ExitGuardMixin):
     mutator_class = GuardMutator
     abstract_name = 'a guard'
-    icon = u'👮'
+    icon = '👮'
 
 
 class MerchantMutator(StateMutator):
@@ -198,7 +197,7 @@ class MerchantMutator(StateMutator):
 class MerchantState(NpcState):
     mutator_class = MerchantMutator
     abstract_name = 'a merchant'
-    icon = u'🤵'
+    icon = '🤵'
     buys = True
 
     @property

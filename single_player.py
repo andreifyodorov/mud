@@ -19,11 +19,11 @@ OBSERVER_CHATKEY = 2
 
 def output(msg):
     msg = re.sub('\/\w+', lambda m: fore.CYAN + m.group(0) + fore.YELLOW, msg)
-    print fore.YELLOW + msg + style.RESET
+    print(fore.YELLOW + msg + style.RESET)
 
 
 def observe(msg):
-    print fore.BLUE + msg + style.RESET
+    print(fore.BLUE + msg + style.RESET)
 
 
 def send_callback_factory(chatkey):
@@ -77,8 +77,8 @@ if __name__ == '__main__':
         chatflow.process_message(s)
 
         try:
-            # s = raw_input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
-            s = raw_input('%s> ' % ((player.input, player.chain),))
+            # s = input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
+            s = input('%s> ' % ((player.input, player.chain),))
         except (EOFError, KeyboardInterrupt):
             break
 

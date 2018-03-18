@@ -1,12 +1,12 @@
-# coding: utf8
 from random import shuffle
 from collections import defaultdict
 
 
 class Direction(str):
-    def __init__(self, name):
-        super(Direction, self).__init__(name)
+    def __new__(cls, value):
+        self = str.__new__(cls, value)
         self.opposite = None
+        return self
 
     @classmethod
     def pair(cls, direction, opposite):
@@ -62,7 +62,7 @@ class Location(object):
             yield descr, ds
 
 
-StartLocation = Field = Location('loc_field', u'🌾 a field', u'in a middle of 🌾 a field.')
+StartLocation = Field = Location('loc_field', '🌾 a field', 'in a middle of 🌾 a field.')
 
 
 class ForestLocation(Location):
@@ -78,8 +78,6 @@ class MagicForestLocation(ForestLocation):
         return {d: dict(location=next(exits), descr="You can go %s.") for d in Direction.compass}
 
 
-# # for direction in
-
 Forests = dict()
 for direction in Direction.compass:
     Forests[direction] = MagicForestLocation(
@@ -94,7 +92,7 @@ for direction in Direction.compass:
     Woods[direction] = woods
     Field.to(woods, direction,
              "To the %s you see woods.",
-             u"To the %s you see 🌾 a field.")
+             "To the %s you see 🌾 a field.")
     for direction in Direction.compass:
         if direction not in woods.exits:
             woods.add_exit(direction, "To the %s you see a forest.", Forests[direction])
@@ -104,7 +102,7 @@ Village = Location('loc_village', 'a village', 'in a village.')
 
 Field.to(Village, north,
          'To the %s you see a road leading to a village.',
-         u'To the %s you see 🌾 a field.')
+         'To the %s you see 🌾 a field.')
 
 VillageHouse = Location('loc_v_house', 'a log house', "inside a peasant house.")
 
@@ -112,17 +110,17 @@ Village.to(VillageHouse, enter,
            "You see a group of log houses. You can %s one of them.",
            "You can %s a house.")
 
-TownGate = Location('loc_gate', u"⛩ a town gate", u"at ⛩ a town gate.")
+TownGate = Location('loc_gate', "⛩ a town gate", "at ⛩ a town gate.")
 
 Village.to(TownGate, north,
-           u"To the %s you see a town wall. A road leads to ⛩ a gate.",
+           "To the %s you see a town wall. A road leads to ⛩ a gate.",
            'To the %s you see a village.')
 
 MarketSquare = Location('loc_market_square', 'a market square', 'on a market square.')
 
 TownGate.to(MarketSquare, north,
             'Through a gate to the %s you see a market square.',
-            u'To the %s you see ⛩ a gate that leads outside the city.')
+            'To the %s you see ⛩ a gate that leads outside the city.')
 
 FactoryDistrict = Location('loc_factory_dist', 'factory district', 'in a factory district.')
 
@@ -130,14 +128,14 @@ MarketSquare.to(FactoryDistrict, west,
                 'To the %s you see a factory district.',
                 'To the %s you see a market square.')
 
-Factory = Location('loc_factory', u'🏭 a factory', u'🏭 in a factory.')
+Factory = Location('loc_factory', '🏭 a factory', '🏭 in a factory.')
 
 FactoryDistrict.to(Factory, enter,
-                   u'You can %s 🏭 a factory building.',
-                   u'You can %s a factory.')
+                   'You can %s 🏭 a factory building.',
+                   'You can %s a factory.')
 
-Slums = Location('loc_slum', u'slums', u'in a slum area.')
+Slums = Location('loc_slum', 'slums', 'in a slum area.')
 
 FactoryDistrict.to(Slums, south,
-                   u'To the %s you see slums.',
-                   u'To the %s you see a factory.')
+                   'To the %s you see slums.',
+                   'To the %s you see a factory.')

@@ -31,7 +31,7 @@ def webhook():
 
     bot.send_messages()
 
-    return 'OK'
+    return b'OK'
 
 
 def enact(*args):

@@ -3,9 +3,9 @@ from random import uniform
 
 
 def weighted_choice(d):
-    total = sum(w for x, w in d.iteritems())
+    total = sum(w for x, w in d.items())
     r = uniform(0, total)
-    for x, w in d.iteritems():
+    for x, w in d.items():
         if w >= r:
             return x()
         r -= w

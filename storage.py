@@ -36,7 +36,7 @@ class Storage(object):
 
         self.entity_subclasses = [sc for c in self.entity_classes for sc in c.__subclasses__()]
         self.entity_subclass_by_name = {sc.__name__: sc for sc in self.entity_subclasses}
-        self.entities = {classname: {} for classname in self.entity_subclass_by_name.iterkeys()}
+        self.entities = {classname: {} for classname in self.entity_subclass_by_name.keys()}
         self.entitykeys = {}
 
         self.lock_object = self.redis.lock('global_lock', timeout=2)
@@ -49,7 +49,7 @@ class Storage(object):
             self.deserialize_state(world, eval(serialized_world))
         self.world = world
 
-        for location_id in Location.all.iterkeys():
+        for location_id in Location.all.keys():
             serialized = self.redis.get(self._location_key % location_id)
             if serialized is not None:
                 self.deserialize_state(self.world[location_id], eval(serialized))
@@ -94,13 +94,13 @@ class Storage(object):
 
 
     def dump(self):
-        for chatkey, state in self.players.iteritems():
+        for chatkey, state in self.players.items():
             yield self._player_key % chatkey, self.serialize_state(state)
-        for location_id, state in self.world.iteritems():
+        for location_id, state in self.world.items():
             yield self._location_key % location_id, self.serialize_state(state)
         for cls in self.entity_subclasses:
             classname = cls.__name__
-            for key, entity in self.entities[classname].iteritems():
+            for key, entity in self.entities[classname].items():
                 serialized = self.serialize_state(entity)
                 yield self._entity_key % (classname, key), serialized
 
@@ -120,11 +120,11 @@ class Storage(object):
     def print_dump(self):
         for k, v in self.dump():
             if v:
-                print "%s\t%s" % (k, pprint.pformat(v))
+                print(k, pprint.pformat(v), sep="\t")
 
 
     def deserialize_state(self, state, data):
-        for k, v in data.iteritems():
+        for k, v in data.items():
             o = self.deserialize(v)
             attr = getattr(state, k, None)
             if attr is not None and hasattr(attr, 'update'):
@@ -146,7 +146,7 @@ class Storage(object):
             return [self.deserialize(o) for o in v]
         elif isinstance(v, dict):
             deserialized = {}
-            for key, val in v.iteritems():
+            for key, val in v.items():
                 deserialized[self.deserialize(key)] = self.deserialize(val)
             return deserialized
         else:
@@ -155,7 +155,7 @@ class Storage(object):
 
     def serialize_state(self, state):
         serialized = {}
-        for k, o in vars(state).iteritems():
+        for k, o in vars(state).items():
             if isinstance(o, (dict, set)) and not o:
                 continue
             v = self.serialize(o)
@@ -171,7 +171,7 @@ class Storage(object):
         key = self.entitykeys.get(entity, None)
         if key is None:
             if self.entities[classname]:
-                key = max(0, max(self.entities[classname].iterkeys())) + 1
+                key = max(0, max(self.entities[classname].keys())) + 1
             else:
                 key = 1
             self.entitykeys[entity] = key
@@ -190,10 +190,10 @@ class Storage(object):
             return [self.serialize(x) for x in o]
         elif isinstance(o, dict):
             serialized = {}
-            for k, v in o.iteritems():
+            for k, v in o.items():
                 serialized[k] = self.serialize(v)
             return serialized
-        elif isinstance(o, (basestring, int, float, bool)):
+        elif isinstance(o, (str, int, float, bool)):
             return o
 
 
