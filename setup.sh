@@ -6,7 +6,7 @@ set -o pipefail
 if [[ $1 ]]; then
 	PYTHON=$1
 else
-	PYTHON=$(which python)
+	PYTHON=$(which python2)
 fi
 
 echo "Using python executable: $PYTHON"
