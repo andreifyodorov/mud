@@ -244,7 +244,7 @@ class ChatflowTestCase(unittest.TestCase):
 
     def test_08_shovel(self):
         self.send('/west')
-        self.send('/north')
+        self.send('/enter')
 
         self.storage.world.time += 1
         self.send('/make')

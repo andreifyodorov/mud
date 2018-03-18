@@ -103,6 +103,7 @@ class PlayerState(ActorState):
         self.send = send_callback or (lambda message: None)
         self.asleep = False
         self.last_command_time = None
+        self.last_location = None
         self.input = {}
         self.chain = {}
 

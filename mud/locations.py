@@ -1,4 +1,29 @@
 # coding: utf8
+from random import shuffle
+from collections import defaultdict
+
+
+class Direction(str):
+    def __init__(self, name):
+        super(Direction, self).__init__(name)
+        self.opposite = None
+
+    @classmethod
+    def pair(cls, direction, opposite):
+        direction = cls(direction)
+        opposite = cls(opposite)
+        direction.opposite = opposite
+        opposite.opposite = direction
+        return direction, opposite
+
+
+north, south = Direction.pair('north', 'south')
+west, east = Direction.pair('west', 'east')
+enter, exit = Direction.pair('enter', 'exit')
+
+Direction.compass = (north, west, south, east)
+Direction.all = Direction.compass + (enter, exit)
+
 
 class Location(object):
     all = {}
@@ -9,122 +34,110 @@ class Location(object):
         self.id = id
         self.name = name
         self.descr = descr
-        self.exits = {}
-
+        if not hasattr(type(self), 'exits'):
+            self.exits = {}
         self.all[id] = self
 
-    def add_exit(self, direction, **kwargs):
-        self.exits[direction] = kwargs
+    def to(self, destination, direction, descr_to, descr_back):
+        self.add_exit(direction, descr_to, destination)
+        destination.add_exit(direction.opposite, descr_back, self)
+
+    def add_exit(self, direction, descr, location):
+        self.exits[direction] = dict(descr=descr, location=location)
+
+    def get_exit_groups(self):
+        bydescr = defaultdict(list)
+        for d, x in self.exits.items():
+            bydescr[x["descr"]].append(d)
+
+        for d in Direction.compass:
+            if d not in self.exits:
+                continue
+            descr = self.exits[d]["descr"]
+            if len(bydescr[descr]) == 1:
+                del bydescr[descr]
+                yield descr, [d]
+
+        for descr, ds in bydescr.items():
+            yield descr, ds
 
 
-StartLocation = Field = Location(
-    id='loc_field',
-    name='a field',
-    descr='in a middle of a field.')
-
-Village = Location(
-    id='loc_village',
-    name='a village',
-    descr='in a village.')
-
-Field.add_exit(
-    direction='north',
-    descr='To the %s you see a road leading to a village.',
-    location=Village)
-
-Village.add_exit(
-    direction='south',
-    descr='To the %s you see a field.',
-    location=Field)
-
-VillageHouse = Location(
-    id='loc_v_house',
-    name='a log house',
-    descr="inside a peasant house.")
-
-Village.add_exit(
-    direction='enter',
-    descr="You see a group of log houses. You can %s one of them.",
-    location=VillageHouse)
-
-VillageHouse.add_exit(
-    direction='exit',
-    descr="You can %s a house.",
-    location=Village)
-
-TownGate = Location(
-    id='loc_gate',
-    name=u"⛩ a town gate",
-    descr=u"at ⛩ a town gate.")
-
-Village.add_exit(
-    direction='north',
-    descr=u"To the %s you see a town wall. A road leads to ⛩ a gate.",
-    location=TownGate)
-
-TownGate.add_exit(
-    direction='south',
-    descr='To the %s you see a village.',
-    location=Village)
-
-MarketSquare = Location(
-    id='loc_market_square',
-    name='a market square',
-    descr='on a market square.')
-
-TownGate.add_exit(
-    direction='north',
-    descr='Through a gate to the %s you see a market square.',
-    location=MarketSquare)
-
-MarketSquare.add_exit(
-    direction='south',
-    descr=u'To the %s you see ⛩ a gate that leads outside the city.',
-    location=TownGate)
-
-FactoryDistrict = Location(
-    id='loc_factory_dist',
-    name='factory district',
-    descr='in a factory district.')
-
-MarketSquare.add_exit(
-    direction='west',
-    descr='To the %s you see a factory district.',
-    location=FactoryDistrict)
-
-FactoryDistrict.add_exit(
-    direction='east',
-    descr='To the %s you see a market square.',
-    location=MarketSquare)
-
-Factory = Location(
-    id='loc_factory',
-    name=u'🏭 a factory',
-    descr=u'🏭 in a factory.')
-
-FactoryDistrict.add_exit(
-    direction='north',
-    descr=u'To the %s you see an entrance to 🏭 a factory building.',
-    location=Factory)
-
-Factory.add_exit(
-    direction='exit',
-    descr=u'You can %s a factory.',
-    location=FactoryDistrict)
-
-Slums = Location(
-    id='loc_slum',
-    name=u'slums',
-    descr=u'in a slum area.')
-
-FactoryDistrict.add_exit(
-    direction='south',
-    descr=u'To the %s you see slums.',
-    location=Slums)
-
-Slums.add_exit(
-    direction='north',
-    descr=u'To the %s you see a factory.',
-    location=FactoryDistrict)
+StartLocation = Field = Location('loc_field', u'🌾 a field', u'in a middle of 🌾 a field.')
 
 
+class ForestLocation(Location):
+    pass
+
+
+class MagicForestLocation(ForestLocation):
+    @property
+    def exits(self):
+        exits = [l for l in Location.all.values() if isinstance(l, ForestLocation)]
+        shuffle(exits)
+        exits = iter(exits)
+        return {d: dict(location=next(exits), descr="You can go %s.") for d in Direction.compass}
+
+
+# # for direction in
+
+Forests = dict()
+for direction in Direction.compass:
+    Forests[direction] = MagicForestLocation(
+        "loc_%s_forest" % direction, "a forest", "lost in a forest.")
+
+
+Woods = dict()
+for direction in Direction.compass:
+    if direction in Field.exits:
+        continue
+    woods = ForestLocation("loc_%s_woods" % direction, "woods", "in woods.")
+    Woods[direction] = woods
+    Field.to(woods, direction,
+             "To the %s you see woods.",
+             u"To the %s you see 🌾 a field.")
+    for direction in Direction.compass:
+        if direction not in woods.exits:
+            woods.add_exit(direction, "To the %s you see a forest.", Forests[direction])
+
+
+Village = Location('loc_village', 'a village', 'in a village.')
+
+Field.to(Village, north,
+         'To the %s you see a road leading to a village.',
+         u'To the %s you see 🌾 a field.')
+
+VillageHouse = Location('loc_v_house', 'a log house', "inside a peasant house.")
+
+Village.to(VillageHouse, enter,
+           "You see a group of log houses. You can %s one of them.",
+           "You can %s a house.")
+
+TownGate = Location('loc_gate', u"⛩ a town gate", u"at ⛩ a town gate.")
+
+Village.to(TownGate, north,
+           u"To the %s you see a town wall. A road leads to ⛩ a gate.",
+           'To the %s you see a village.')
+
+MarketSquare = Location('loc_market_square', 'a market square', 'on a market square.')
+
+TownGate.to(MarketSquare, north,
+            'Through a gate to the %s you see a market square.',
+            u'To the %s you see ⛩ a gate that leads outside the city.')
+
+FactoryDistrict = Location('loc_factory_dist', 'factory district', 'in a factory district.')
+
+MarketSquare.to(FactoryDistrict, west,
+                'To the %s you see a factory district.',
+                'To the %s you see a market square.')
+
+Factory = Location('loc_factory', u'🏭 a factory', u'🏭 in a factory.')
+
+FactoryDistrict.to(Factory, enter,
+                   u'You can %s 🏭 a factory building.',
+                   u'You can %s a factory.')
+
+Slums = Location('loc_slum', u'slums', u'in a slum area.')
+
+FactoryDistrict.to(Slums, south,
+                   u'To the %s you see slums.',
+                   u'To the %s you see a factory.')

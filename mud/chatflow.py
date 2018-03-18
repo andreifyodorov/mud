@@ -2,10 +2,11 @@
 from itertools import groupby, chain, izip_longest
 
 from .mutators import StateMutator
-from .locations import StartLocation
+from .locations import StartLocation, Direction
 from .commodities import ActionClasses, Commodity, Vegetable, DirtyRags
 from .states import PlayerState, NpcMixin
 from .utils import list_sentence, pretty_list, group_by_class, FilterSet
+from .production import MeansOfProduction
 
 
 class CommandPrefix(unicode):
@@ -290,21 +291,23 @@ class Chatflow(StateMutator):
         yield (
             'me',
             lambda:
-                self.look(self.actor)
-                if self.actor.name
+                self.look(self.actor) if self.actor.name
                 else self.input('name', self.name,
-                                "You didn't introduce yourself yet. "
-                                "Please tell me your name.")())
+                                "You didn't introduce yourself yet. Please tell me your name.")())
 
         if self.actor.alive:
             yield (
                 'restart',
                 self.confirmation('restart', self.die, 'Do you want to restart the game?'))
 
-            yield 'where', lambda: self.where(verb='are still')
+            yield 'where', lambda: self.where()
 
-            for l in self.actor.location.exits.keys():
-                yield l, lambda: self.go(l)
+            for l in Direction.all:
+                yield (
+                    l,
+                    lambda: self.go(l) if l in self.actor.location.exits
+                            else "You can't go %s right now." % l if l in Direction.compass
+                            else "You can't %s right now." % l)
 
             yield (
                 'look',
@@ -384,9 +387,13 @@ class Chatflow(StateMutator):
                     if self.actor.wields
                     else "You aren't wielding anything.")
 
-            for means in self.location.means:
-                yield means.verb, lambda: self.produce(means)
-
+            for cls in MeansOfProduction.__subclasses__():
+                means = next(self.location.means.filter(cls), None)
+                yield (
+                    cls.verb,
+                    lambda: self.produce(next(self.location.means.filter(cls)))
+                            if any(self.location.means.filter(cls))
+                            else "You can't %s here" % cls.verb)
 
             yield (
                 'sleep',
@@ -530,14 +537,25 @@ class Chatflow(StateMutator):
                      1 if isinstance(what, Commodity) else len(what))
 
 
-    def where(self, verb="are"):
-        yield 'You %s %s' % (verb, self.actor.location.descr)
+    def where(self, verb=None):
+        actor = self.actor
+        location = actor.location
+        last_location = actor.last_location
+
+        if not verb:
+            verb = (
+                "are still" if last_location and location.descr == last_location.descr
+                else "are")
+
+        actor.last_location = location
+        yield 'You %s %s' % (verb, location.descr)
 
         for means in self.location.means:
             yield means.descr % (self.cmd_pfx + means.verb)
 
-        for direction, exit in self.actor.location.exits.iteritems():
-            yield exit['descr'] % (self.cmd_pfx + direction)
+        for descr, directions in location.get_exit_groups():
+            directions = (self.cmd_pfx + d for d in directions)
+            yield descr % list_sentence(directions)
 
         if len(self.location.items) == 1:
             for item in self.location.items:
