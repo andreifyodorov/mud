@@ -18,4 +18,9 @@ rm -rf $virtualenv
 mkdir -p $virtualenv
 $PYTHON $(which virtualenv) $virtualenv
 . $virtualenv/bin/activate
-pip3.6 install -r requirments.txt
+
+if [[ $(uname -s) == 'Darwin' ]]; then
+	pip3.6 install -r requirments_dev.txt
+else
+	pip3.6 install -r requirments.txt
+fi
