@@ -1,4 +1,4 @@
-from random import shuffle
+from random import choice
 from collections import defaultdict
 
 
@@ -26,17 +26,25 @@ Direction.all = Direction.compass + (enter, exit)
 
 
 class Location(object):
-    all = {}
-
     def __init__(self, id, name, descr):
-        if id in self.all:
-            raise Exception('Location %s exists' % id)
         self.id = id
         self.name = name
         self.descr = descr
         if not hasattr(type(self), 'exits'):
             self.exits = {}
-        self.all[id] = self
+        self.register()
+
+    def register(self):
+        cls = type(self)
+        while True:
+            if 'all' not in vars(cls):
+                cls.all = {}
+            if self.id in cls.all:
+                raise Exception('Location %s exists' % self.id)
+            cls.all[self.id] = self
+            if cls is Location:
+                break
+            cls, = cls.__bases__
 
     def to(self, destination, direction, descr_to, descr_back):
         self.add_exit(direction, descr_to, destination)
@@ -46,14 +54,16 @@ class Location(object):
         self.exits[direction] = dict(descr=descr, location=location)
 
     def get_exit_groups(self):
+        exits = self.exits
+
         bydescr = defaultdict(list)
-        for d, x in self.exits.items():
+        for d, x in exits.items():
             bydescr[x["descr"]].append(d)
 
         for d in Direction.compass:
-            if d not in self.exits:
+            if d not in exits:
                 continue
-            descr = self.exits[d]["descr"]
+            descr = exits[d]["descr"]
             if len(bydescr[descr]) == 1:
                 del bydescr[descr]
                 yield descr, [d]
@@ -64,78 +74,78 @@ class Location(object):
 
 StartLocation = Field = Location('loc_field', '🌾 a field', 'in a middle of 🌾 a field.')
 
+Village = Location('loc_village', 'a village', 'in a village.')
+
+Field.to(Village, north, 'To the %s you see a road leading to a village.', 'To the %s you see 🌾 a field.')
+
 
 class ForestLocation(Location):
     pass
 
 
+class WoodsLocation(ForestLocation):
+    pass
+
+
+class MagicExit(object):
+    def __init__(self, exclude):
+        self.exclude = exclude
+
+    def __getitem__(self, key):
+        if key == "descr":
+            return "You can go %s"
+
+        if key == "location":
+            loc = choice(list(ForestLocation.all.values()))
+            if isinstance(loc, WoodsLocation) and self.exclude in loc.id:
+                return choice(list(l for l in WoodsLocation.all.values() if self.exclude not in l.id))
+            return loc
+
+        raise KeyError
+
+
 class MagicForestLocation(ForestLocation):
-    @property
-    def exits(self):
-        exits = [l for l in Location.all.values() if isinstance(l, ForestLocation)]
-        shuffle(exits)
-        exits = iter(exits)
-        return {d: dict(location=next(exits), descr="You can go %s.") for d in Direction.compass}
+    exits = {d: MagicExit(d) for d in Direction.compass}
 
 
 Forests = dict()
 for direction in Direction.compass:
-    Forests[direction] = MagicForestLocation(
-        "loc_%s_forest" % direction, "a forest", "lost in a forest.")
+    Forests[direction] = MagicForestLocation("loc_%s_forest" % direction, "a forest", "lost in a forest.")
 
 
 Woods = dict()
 for direction in Direction.compass:
     if direction in Field.exits:
         continue
-    woods = ForestLocation("loc_%s_woods" % direction, "woods", "in woods.")
+    woods = WoodsLocation("loc_%s_woods" % direction, "woods", "in the woods.")
     Woods[direction] = woods
-    Field.to(woods, direction,
-             "To the %s you see woods.",
-             "To the %s you see 🌾 a field.")
+    Field.to(woods, direction, "To the %s you see woods.", "To the %s you see 🌾 a field.")
     for direction in Direction.compass:
         if direction not in woods.exits:
             woods.add_exit(direction, "To the %s you see a forest.", Forests[direction])
 
 
-Village = Location('loc_village', 'a village', 'in a village.')
-
-Field.to(Village, north,
-         'To the %s you see a road leading to a village.',
-         'To the %s you see 🌾 a field.')
-
 VillageHouse = Location('loc_v_house', 'a log house', "inside a peasant house.")
 
-Village.to(VillageHouse, enter,
-           "You see a group of log houses. You can %s one of them.",
-           "You can %s a house.")
+Village.to(VillageHouse, enter, "You see a group of log houses. You can %s one of them.", "You can %s a house.")
 
 TownGate = Location('loc_gate', "⛩ a town gate", "at ⛩ a town gate.")
 
-Village.to(TownGate, north,
-           "To the %s you see a town wall. A road leads to ⛩ a gate.",
-           'To the %s you see a village.')
+Village.to(TownGate, north, "To the %s you see a town wall. A road leads to ⛩ a gate.", 'To the %s you see a village.')
 
 MarketSquare = Location('loc_market_square', 'a market square', 'on a market square.')
 
-TownGate.to(MarketSquare, north,
-            'Through a gate to the %s you see a market square.',
+TownGate.to(MarketSquare, north, 'Through a gate to the %s you see a market square.',
             'To the %s you see ⛩ a gate that leads outside the city.')
 
 FactoryDistrict = Location('loc_factory_dist', 'factory district', 'in a factory district.')
 
-MarketSquare.to(FactoryDistrict, west,
-                'To the %s you see a factory district.',
-                'To the %s you see a market square.')
+MarketSquare.to(FactoryDistrict, west, 'To the %s you see a factory district.', 'To the %s you see a market square.')
 
 Factory = Location('loc_factory', '🏭 a factory', '🏭 in a factory.')
 
-FactoryDistrict.to(Factory, enter,
-                   'You can %s 🏭 a factory building.',
-                   'You can %s a factory.')
+FactoryDistrict.to(Factory, enter, 'You can %s 🏭 a factory building.', 'You can %s a factory.')
 
 Slums = Location('loc_slum', 'slums', 'in a slum area.')
 
-FactoryDistrict.to(Slums, south,
-                   'To the %s you see slums.',
-                   'To the %s you see a factory.')
+FactoryDistrict.to(Slums, south, 'To the %s you see slums.', 'To the %s you see a factory.')
