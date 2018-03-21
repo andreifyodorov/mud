@@ -3,15 +3,15 @@
 from mud.chatflow import Chatflow
 from mud.locations import Field, TownGate, VillageHouse, MarketSquare, Factory
 from mud.production import Land, Distaff, Workbench
-from mud.states import PlayerState
 from mud.npcs import PeasantState, GuardState, MerchantState
-from mud.commodities import Spindle, DirtyRags, RoughspunTunic, Overcoat
+from mud.commodities import DirtyRags, RoughspunTunic, Overcoat
 
 from bot import bot
 from storage import Storage
 
 
 migrations = list()
+
 
 def version(f):
     migrations.append(f)
@@ -93,6 +93,7 @@ def migrate_5(storage):
     merchant = MerchantState()
     merchant.get_mutator(storage.world).spawn(MarketSquare)
 
+
 @version
 def migrate_6(storage):
     for player in storage.all_players():
@@ -126,7 +127,6 @@ def migrate(dry_run=True):
     storage = Storage(dry_send_callback_factory if dry_run else bot.send_callback_factory)
 
     version = storage.version
-    old_version = version
 
     if dry_run:
         print("No worries, it's a dry run")
@@ -134,7 +134,7 @@ def migrate(dry_run=True):
     version = version or 0
     print(f"Current version is {version}")
     while len(migrations) > version:
-        print("Migrating storage from version {version:d} to {version + 1:d}")
+        print(f"Migrating storage from version {version:d} to {version + 1:d}")
         migrations[version](storage)
         version += 1
 

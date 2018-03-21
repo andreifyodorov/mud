@@ -74,7 +74,6 @@ class ChatflowTestCase(unittest.TestCase):
         cls.player = PlayerState(send_callback=cls.messages.send_callback_factory(0))
         cls.chatflow = Chatflow(cls.player, cls.storage.world, cmd_pfx=CommandPrefix('/'))
 
-
     def setUp(self):
         self.messages.reset()
 
@@ -96,7 +95,6 @@ class ChatflowTestCase(unittest.TestCase):
         else:
             raise AssertionError("%s in %d cycles" % (error_message, i))
 
-
     def get_option(self, match):
         option = None
         for lines in self.messages:
@@ -105,7 +103,6 @@ class ChatflowTestCase(unittest.TestCase):
                     option = line[:2]
         self.assertTrue(option is not None)
         return option
-
 
     def test_01_start(self):
         self.send('/start')
@@ -122,7 +119,6 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('/me')
         self.assertReplyContains('Test Player')
 
-
     def test_02_field(self):
         self.send('/start')
         self.assertReplyContains('/farm')
@@ -135,7 +131,6 @@ class ChatflowTestCase(unittest.TestCase):
         self.player.bag.add(Vegetable())
         self.send('/bag')
         self.assertReplyContains('/eat', '/drop')
-
 
     def test_03_peasant_ai(self):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
@@ -176,7 +171,6 @@ class ChatflowTestCase(unittest.TestCase):
             lambda: peasant.location == self.player.location,
             "Peasant didn't return to a field")
 
-
     def test_04_barter(self):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
         self.send('/barter')
@@ -192,10 +186,9 @@ class ChatflowTestCase(unittest.TestCase):
         self.assertReplyContains('village', '/north')
         self.send('/north')
         self.assertReplyContains('gate', '/north')
-        l = self.player.location
+        loc = self.player.location
         self.send('/north')
-        self.assertIs(l, self.player.location)  # guard blocks the way
-
+        self.assertIs(loc, self.player.location)  # guard blocks the way
 
     def test_06_tunic(self):
         spindle = next(self.player.bag.filter(Spindle))
@@ -231,7 +224,6 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('/exit')
         self.assertReplyContains('village', '/north')
 
-
     def test_07_merchant(self):
         self.send('/north')
         self.send('/north')
@@ -240,7 +232,6 @@ class ChatflowTestCase(unittest.TestCase):
         self.assertReplyContains('/1')
         self.send('/1')
         self.assertTrue(self.player.credits > 0)
-
 
     def test_08_shovel(self):
         self.send('/west')
@@ -262,7 +253,6 @@ class ChatflowTestCase(unittest.TestCase):
             self.send('/farm')
             self.assertIs(self.player.wields, shovel if n < 4 else None)
             self.assertFalse(shovel in self.player.bag)
-
 
 
 def load_tests(loader, tests, pattern):

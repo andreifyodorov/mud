@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-from mud.chatflow import Chatflow, CommandPrefix
-from mud.states import World, PlayerState
-from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare
-from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags, Shovel
-from mud.npcs import PeasantState
+from mud.chatflow import Chatflow, CommandPrefix  # noqa: F401
+from mud.states import PlayerState  # noqa: F401
+from mud.world import World  # noqa: F401
+from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare  # noqa: F401
+from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
+from mud.npcs import PeasantState  # noqa: F401
 from test import MockRedis
 from storage import Storage
 from migrate import migrations
@@ -53,7 +54,6 @@ if __name__ == '__main__':
     # peasant.get_mutator(storage.world).spawn(Field)
 
     storage.world[Field.id].items.update([Vegetable()])
-
 
     s = '/where'
     # s = '/start'

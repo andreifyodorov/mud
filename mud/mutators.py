@@ -3,7 +3,7 @@ from .utils import pretty_list
 from itertools import chain
 
 
-class ExitGuardMixin(object):
+class ExitGuardState(object):
     pass
 
 
@@ -48,7 +48,7 @@ class StateMutator(object):
         old = self.actor.location
         new = self.actor.location.exits[direction]['location']
 
-        guards = (a for a in self.location.actors if isinstance(a, ExitGuardMixin))
+        guards = (a for a in self.location.actors if isinstance(a, ExitGuardState))
         for guard in guards:
             if not guard.get_mutator(self.world).allow(self.actor, new):
                 return False
@@ -184,19 +184,17 @@ class StateMutator(object):
         # get required materials
         materials = {}
         for t, n in means.required_materials.items():
-            l = list(self.actor.bag.filter(t))
-            if len(l) >= n:
-                materials[t] = l[:n]
+            loc = list(self.actor.bag.filter(t))
+            if len(loc) >= n:
+                materials[t] = loc[:n]
             else:
-                missing.extend([t] * (n - len(l)))
+                missing.extend([t] * (n - len(loc)))
         # do we miss something?
         return missing, tools, materials
-
 
     def can_produce(self, means):
         missing, tools, materials = self.produce_missing(means)
         return False if missing else True
-
 
     def produce(self, means, missing=None):
         missing, tools, materials = self.produce_missing(means, missing)
@@ -226,7 +224,6 @@ class StateMutator(object):
 
         return fruits
 
-
     def deteriorate(self, commodity):
         if not isinstance(commodity, Deteriorates):
             return False
@@ -250,8 +247,6 @@ class StateMutator(object):
             if replace:
                 self.actor.bag.add(replace)
 
-        self.location.broadcast(commodity.deteriorate("%s's" % self.actor.name),
-                                skip_sender=self.actor)
+        self.location.broadcast(commodity.deteriorate(f"{self.actor.name}'s"), skip_sender=self.actor)
 
         return True
-

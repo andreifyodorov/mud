@@ -39,9 +39,7 @@ def enact(*args):
     storage.world.enact()
 
     for player in storage.world.all_players():
-        if (player.last_command_time is not None
-                and storage.world.time - player.last_command_time > 10):
-            Chatflow(player, storage.world, bot.cmd_pfx).sleep()
+        Chatflow(player, storage.world, bot.cmd_pfx).act()
 
     storage.save()
     bot.send_messages()
@@ -49,7 +47,7 @@ def enact(*args):
 
 try:
     import uwsgi
-except:
+except ImportError:
     pass
 else:
     uwsgi.register_signal(30, "worker", enact)

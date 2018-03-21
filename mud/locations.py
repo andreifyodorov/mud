@@ -83,10 +83,6 @@ class ForestLocation(Location):
     pass
 
 
-class WoodsLocation(ForestLocation):
-    pass
-
-
 class MagicExit(object):
     def __init__(self, exclude):
         self.exclude = exclude
@@ -111,6 +107,10 @@ class MagicForestLocation(ForestLocation):
 Forests = dict()
 for direction in Direction.compass:
     Forests[direction] = MagicForestLocation("loc_%s_forest" % direction, "a forest", "lost in a forest.")
+
+
+class WoodsLocation(ForestLocation):
+    pass
 
 
 Woods = dict()

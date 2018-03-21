@@ -1,5 +1,5 @@
-from .states import ActorState, PlayerState, NpcMixin
-from .mutators import StateMutator, ExitGuardMixin
+from .states import ActorState, PlayerState, NpcState
+from .mutators import StateMutator, ExitGuardState
 from .commodities import Edibles, DirtyRags, Overcoat, FlamboyantAttire, RoughspunTunic, Spindle
 from .locations import Field, Village, VillageHouse, TownGate, MarketSquare
 
@@ -39,7 +39,6 @@ class NpcMutator(StateMutator):
 
         raise IsNotDoneYet()
 
-
     def act(self):
         if ('resting' not in self.actor.counters
                 and not self.actor.tired
@@ -57,7 +56,7 @@ class NpcMutator(StateMutator):
             pass
 
 
-class NpcState(ActorState, NpcMixin):
+class NpcState(ActorState, NpcState):
     mutator_class = None
 
     def __init__(self, name=None):
@@ -68,7 +67,6 @@ class NpcState(ActorState, NpcMixin):
         self.hungry = False
         self.tired = False
         self.accumulate = False
-
 
     @property
     def descr(self):
@@ -175,13 +173,13 @@ class GuardMutator(StateMutator):
             if isinstance(visitor, PlayerState):
                 visitor.send("The guard blocks your way and pushes you away.")
                 self.say_to(visitor,
-                    "We don't allow filthy beggars on our streets! "
-                    "Get yourself some proper clothes and then you may pass.")
+                            "We don't allow filthy beggars on our streets! "
+                            "Get yourself some proper clothes and then you may pass.")
             return False
         return True
 
 
-class GuardState(NpcState, ExitGuardMixin):
+class GuardState(NpcState, ExitGuardState):
     mutator_class = GuardMutator
     abstract_name = 'a guard'
     icon = '👮'
@@ -207,3 +205,13 @@ class MerchantState(NpcState):
     @property
     def sells(self):
         return len(self.for_sale) > 0
+
+
+class RatMutator(StateMutator):
+    pass
+
+
+class RatState(NpcState):
+    mutator_class = RatMutator
+    abstract_name = 'a rat'
+    icon = '🐀'

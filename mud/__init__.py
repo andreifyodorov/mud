@@ -1,1 +1,1 @@
-from .chatflow import Chatflow
+from .chatflow import Chatflow  # noqa: F401

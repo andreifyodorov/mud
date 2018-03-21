@@ -1,12 +1,12 @@
-from itertools import chain
 from redis import StrictRedis
 import pprint
 
-from mud.states import State, PlayerState, World
+from mud.states import PlayerState
+from mud.world import World
 from mud.npcs import NpcState
 from mud.locations import Location
-from mud.production import MeansOfProduction, Land
-from mud.commodities import Commodity, Vegetable
+from mud.production import MeansOfProduction
+from mud.commodities import Commodity
 
 import settings
 
@@ -25,7 +25,6 @@ class Storage(object):
             redis.delete('global_lock')
         setattr(Storage, '_default_redis_connection', redis)
         return redis
-
 
     def __init__(self, send_callback_factory, redis=None, chatkey_type=None):
         self.send_callback_factory = send_callback_factory
@@ -54,7 +53,6 @@ class Storage(object):
             if serialized is not None:
                 self.deserialize_state(self.world[location_id], eval(serialized))
 
-
     def get_player_state(self, chatkey):
         if chatkey in self.players:
             return self.players[chatkey]
@@ -68,7 +66,6 @@ class Storage(object):
         self.chatkeys[player] = chatkey
         self.players[chatkey] = player
         return player
-
 
     def get_entity_state(self, classname, arg):
         cls = self.entity_subclass_by_name.get(classname, None)
@@ -92,7 +89,6 @@ class Storage(object):
             self.deserialize_state(entity, arg)
         return entity
 
-
     def dump(self):
         for chatkey, state in self.players.items():
             yield self._player_key % chatkey, self.serialize_state(state)
@@ -107,7 +103,6 @@ class Storage(object):
         yield "world", self.serialize_state(self.world)
         yield "version", self.version
 
-
     def save(self):
         for k, v in self.dump():
             if v:
@@ -116,12 +111,10 @@ class Storage(object):
                 self.redis.delete(k)
         self.lock_object.release()
 
-
     def print_dump(self):
         for k, v in self.dump():
             if v:
                 print(k, pprint.pformat(v), sep="\t")
-
 
     def deserialize_state(self, state, data):
         for k, v in data.items():
@@ -131,7 +124,6 @@ class Storage(object):
                 attr.update(o)
             else:
                 setattr(state, k, o)
-
 
     def deserialize(self, v):
         if isinstance(v, tuple):
@@ -152,7 +144,6 @@ class Storage(object):
         else:
             return v
 
-
     def serialize_state(self, state):
         serialized = {}
         for k, o in vars(state).items():
@@ -165,7 +156,6 @@ class Storage(object):
                 serialized[k] = v
         return serialized
 
-
     def serialize_entity(self, entity):
         classname = entity.__class__.__name__
         key = self.entitykeys.get(entity, None)
@@ -177,7 +167,6 @@ class Storage(object):
             self.entitykeys[entity] = key
             self.entities[classname][key] = entity
         return (classname, key)
-
 
     def serialize(self, o):
         if isinstance(o, Location):
@@ -196,13 +185,11 @@ class Storage(object):
         elif isinstance(o, (str, int, float, bool)):
             return o
 
-
     def all_players(self):
         # this is different from world.all_players() because of players in limbo
-        keys = (key.split(":", 1) for key in self.redis.keys(self._player_key % "*"))
+        keys = (key.split(b':', 1) for key in self.redis.keys(self._player_key % "*"))
         for prefix, chatkey in keys:
             yield self.get_player_state(self.chatkey_type(chatkey))
-
 
     def all_npcs(self):
         return self.world.all_npcs()
