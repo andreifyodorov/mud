@@ -2,7 +2,7 @@ from redis import StrictRedis
 import pprint
 
 from mud.states import PlayerState
-from mud.world import World
+from mud.world import WorldState
 from mud.npcs import NpcState
 from mud.locations import Location
 from mud.production import MeansOfProduction
@@ -42,7 +42,7 @@ class Storage(object):
         self.lock_object.acquire()
         self.version = int(self.redis.get('version') or 0)
 
-        world = World()
+        world = WorldState()
         serialized_world = self.redis.get('world')
         if serialized_world:
             self.deserialize_state(world, eval(serialized_world))

@@ -1,10 +1,6 @@
 from .utils import FilterSet
 
 
-class NpcState(object):
-    pass
-
-
 class State(object):
     icon = None
     abstract_name = None
@@ -38,6 +34,7 @@ class ActorState(State):
     def __init__(self, name=None):
         super(ActorState, self).__init__()
         self.name = name
+        self.counters = {}
         self.alive = False
         self.location = None
         self.bag = FilterSet()

@@ -8,7 +8,7 @@ from storage import Storage
 from migrate import migrations
 from mud.chatflow import Chatflow, CommandPrefix
 from mud.states import PlayerState
-from mud.commodities import Vegetable, Cotton, Spindle, Shovel, DirtyRags, RoughspunTunic
+from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, Shovel, DirtyRags, RoughspunTunic
 from mud.npcs import PeasantState
 
 
@@ -253,6 +253,17 @@ class ChatflowTestCase(unittest.TestCase):
             self.send('/farm')
             self.assertIs(self.player.wields, shovel if n < 4 else None)
             self.assertFalse(shovel in self.player.bag)
+
+    def test_09_mushroom(self):
+        self.cycle(
+            lambda: self.send('/south'),
+            lambda: "mushroom" in "\n".join(self.messages),
+            "Couldn't find a mushroom",
+            max_cycles=200)
+
+        self.send('/pick')
+        self.assertReplyContains('mushroom')
+        self.assertTrue(any(self.player.bag.filter(Mushroom)))
 
 
 def load_tests(loader, tests, pattern):

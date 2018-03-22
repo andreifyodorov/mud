@@ -3,10 +3,6 @@ from .utils import pretty_list
 from itertools import chain
 
 
-class ExitGuardState(object):
-    pass
-
-
 class StateMutator(object):
     def __init__(self, actor, world):
         self.actor = actor
@@ -48,9 +44,9 @@ class StateMutator(object):
         old = self.actor.location
         new = self.actor.location.exits[direction]['location']
 
-        guards = (a for a in self.location.actors if isinstance(a, ExitGuardState))
-        for guard in guards:
-            if not guard.get_mutator(self.world).allow(self.actor, new):
+        for npc in self.location.npcs():
+            if (hasattr(npc.mutator_class, 'allow')
+                    and not npc.get_mutator(self.world).allow(self.actor, new)):
                 return False
 
         self.anounce('leaves to %s.' % new.name)

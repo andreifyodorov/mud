@@ -3,7 +3,8 @@ from itertools import chain
 from .mutators import StateMutator
 from .locations import StartLocation, Direction
 from .commodities import ActionClasses, Commodity, DirtyRags
-from .states import PlayerState, NpcState
+from .states import PlayerState
+from .npcs import NpcState
 from .utils import list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
 
@@ -328,7 +329,7 @@ class Chatflow(StateMutator):
             yield (
                 'pick',
                 lambda *args:
-                    self.choice('pick', self.pick, self.location.items, select_subset=True)(*args)
+                    self.choice('pick', self.pick, self.location.items, skip_single=True, select_subset=True)(*args)
                     if self.location.items
                     else nothing_there)
 

@@ -29,6 +29,12 @@ class Vegetable(Commodity, Edibles):
     abstract_plural = '%d vegetables'
 
 
+class Mushroom(Commodity, Edibles):
+    icon = '🍄'
+    abstract_name = 'a mushroom'
+    abstract_plural = '%d mushrooms'
+
+
 class Cotton(Commodity):
     abstract_name = 'cotton'
     abstract_plural = '%d balls of cotton'

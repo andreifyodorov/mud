@@ -2,7 +2,6 @@
 
 from mud.chatflow import Chatflow, CommandPrefix  # noqa: F401
 from mud.states import PlayerState  # noqa: F401
-from mud.world import World  # noqa: F401
 from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare  # noqa: F401
 from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
 from mud.npcs import PeasantState  # noqa: F401

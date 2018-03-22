@@ -1,5 +1,5 @@
-from .states import ActorState, PlayerState, NpcState
-from .mutators import StateMutator, ExitGuardState
+from .states import ActorState, PlayerState
+from .mutators import StateMutator
 from .commodities import Edibles, DirtyRags, Overcoat, FlamboyantAttire, RoughspunTunic, Spindle
 from .locations import Field, Village, VillageHouse, TownGate, MarketSquare
 
@@ -56,13 +56,11 @@ class NpcMutator(StateMutator):
             pass
 
 
-class NpcState(ActorState, NpcState):
+class NpcState(ActorState):
     mutator_class = None
 
     def __init__(self, name=None):
         super(NpcState, self).__init__(name)
-
-        self.counters = {}
         self.doing_descr = None
         self.hungry = False
         self.tired = False
@@ -179,7 +177,7 @@ class GuardMutator(StateMutator):
         return True
 
 
-class GuardState(NpcState, ExitGuardState):
+class GuardState(NpcState):
     mutator_class = GuardMutator
     abstract_name = 'a guard'
     icon = '👮'
