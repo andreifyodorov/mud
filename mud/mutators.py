@@ -16,6 +16,25 @@ class StateMutator(object):
     def others(self):
         return (a for a in self.location.actors if a is not self.actor)
 
+    def set_counter(self, counter, value):
+        if value > 0:
+            self.actor.counters[counter] = value - 1
+
+    def dec_counter(self, counter):
+        value = self.actor.counters.get(counter, None)
+        if value is not None and value > 0:
+            self.actor.counters[counter] = value - 1
+        else:
+            if value is not None:
+                del self.actor.counters[counter]
+            return True
+
+    def is_(self, doing):
+        return doing in self.actor.counters
+
+    def act(self):
+        self.dec_counter('cooldown')
+
     def anounce(self, message):
         self.location.broadcast("%s %s" % (self.actor.Name, message), skip_sender=self.actor)
 
@@ -44,9 +63,9 @@ class StateMutator(object):
         old = self.actor.location
         new = self.actor.location.exits[direction]['location']
 
-        for npc in self.location.npcs():
-            if (hasattr(npc.mutator_class, 'allow')
-                    and not npc.get_mutator(self.world).allow(self.actor, new)):
+        for actor in self.location.actors:
+            if (hasattr(actor.mutator_class, 'allow')
+                    and not actor.get_mutator(self.world).allow(self.actor, new)):
                 return False
 
         self.anounce('leaves to %s.' % new.name)
@@ -197,7 +216,7 @@ class StateMutator(object):
         if missing:
             return
 
-        if self.actor.last_success_time and self.actor.last_success_time == self.world.time:
+        if self.is_('cooldown'):
             return
 
         self._relocate(chain.from_iterable(materials.values()), self.actor.bag)
@@ -215,6 +234,7 @@ class StateMutator(object):
             self.unequip()
 
         self.actor.last_success_time = self.world.time
+        self.set_counter('cooldown', 1)
         self.anounce('%ss %s.' % (means.verb, pretty_list(fruits)))
         self.actor.bag.update(fruits)
 

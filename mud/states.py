@@ -30,6 +30,7 @@ class ActorState(State):
     barters = False
     sells = False
     buys = False
+    asleep = False
 
     def __init__(self, name=None):
         super(ActorState, self).__init__()
@@ -65,18 +66,8 @@ class ActorState(State):
         else:
             return self.name
 
-    def attack(self):
+    def send(self, msg):
         pass
 
-
-class PlayerState(ActorState):
-    definite_name = '(player)'
-
-    def __init__(self, send_callback):
-        super(PlayerState, self).__init__()
-        self.send = send_callback or (lambda message: None)
-        self.asleep = False
-        self.last_command_time = None
-        self.last_location = None
-        self.input = {}
-        self.chain = {}
+    def attack(self):
+        pass

@@ -1,7 +1,7 @@
 from redis import StrictRedis
 import pprint
 
-from mud.states import PlayerState
+from mud.player import PlayerState
 from mud.world import WorldState
 from mud.npcs import NpcState
 from mud.locations import Location
@@ -26,8 +26,9 @@ class Storage(object):
         setattr(Storage, '_default_redis_connection', redis)
         return redis
 
-    def __init__(self, send_callback_factory, redis=None, chatkey_type=None):
+    def __init__(self, send_callback_factory, cmd_pfx, redis=None, chatkey_type=None):
         self.send_callback_factory = send_callback_factory
+        self.cmd_pfx = cmd_pfx
         self.redis = redis or self._default_redis_connection
         self.chatkey_type = chatkey_type or int
         self.players = {}
@@ -57,7 +58,7 @@ class Storage(object):
         if chatkey in self.players:
             return self.players[chatkey]
 
-        player = PlayerState(send_callback=self.send_callback_factory(chatkey))
+        player = PlayerState(send_callback=self.send_callback_factory(chatkey), cmd_pfx=self.cmd_pfx)
 
         serialized = self.redis.get(self._player_key % chatkey)
         if serialized is not None:
@@ -147,6 +148,8 @@ class Storage(object):
     def serialize_state(self, state):
         serialized = {}
         for k, o in vars(state).items():
+            if k == "cmd_pfx":
+                continue
             if isinstance(o, (dict, set)) and not o:
                 continue
             v = self.serialize(o)
@@ -186,10 +189,6 @@ class Storage(object):
             return o
 
     def all_players(self):
-        # this is different from world.all_players() because of players in limbo
         keys = (key.split(b':', 1) for key in self.redis.keys(self._player_key % "*"))
         for prefix, chatkey in keys:
             yield self.get_player_state(self.chatkey_type(chatkey))
-
-    def all_npcs(self):
-        return self.world.all_npcs()

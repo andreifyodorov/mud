@@ -1,28 +1,12 @@
-from .states import ActorState, PlayerState
+from .states import ActorState
 from .mutators import StateMutator
 from .commodities import Edibles, DirtyRags, Overcoat, FlamboyantAttire, RoughspunTunic, Spindle
 from .locations import Field, Village, VillageHouse, TownGate, MarketSquare
 
 
-class IsNotDoneYet(Exception):
-    pass
-
-
 class NpcMutator(StateMutator):
-    def set_counter(self, counter, value):
-        self.actor.counters[counter] = value
-
-    def dec_counter(self, counter):
-        value = self.actor.counters.get(counter, None)
-        if value is not None and value > 0:
-            self.actor.counters[counter] = value - 1
-        else:
-            if value is not None:
-                del self.actor.counters[counter]
-            return True
-
-    def is_(self, doing):
-        return doing in self.actor.counters
+    class IsNotDoneYet(Exception):
+        pass
 
     def is_done(self, doing, doing_descr, done_in):
         if doing not in self.actor.counters:
@@ -37,9 +21,11 @@ class NpcMutator(StateMutator):
                 self.actor.doing_descr = None
             return True
 
-        raise IsNotDoneYet()
+        raise self.IsNotDoneYet()
 
     def act(self):
+        super(NpcMutator, self).act()
+
         if ('resting' not in self.actor.counters
                 and not self.actor.tired
                 and self.dec_counter('tired')):
@@ -52,7 +38,7 @@ class NpcMutator(StateMutator):
 
         try:
             self.ai()
-        except IsNotDoneYet:
+        except self.IsNotDoneYet:
             pass
 
 
@@ -168,11 +154,10 @@ class GuardMutator(StateMutator):
         if (isinstance(visitor.wears, DirtyRags)
                 and self.actor.location is TownGate
                 and to is MarketSquare):
-            if isinstance(visitor, PlayerState):
-                visitor.send("The guard blocks your way and pushes you away.")
-                self.say_to(visitor,
-                            "We don't allow filthy beggars on our streets! "
-                            "Get yourself some proper clothes and then you may pass.")
+            visitor.send("The guard blocks your way and pushes you away.")
+            self.say_to(visitor,
+                        "We don't allow filthy beggars on our streets! "
+                        "Get yourself some proper clothes and then you may pass.")
             return False
         return True
 

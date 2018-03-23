@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-from mud.chatflow import Chatflow, CommandPrefix  # noqa: F401
-from mud.states import PlayerState  # noqa: F401
+from mud.player import PlayerState, Chatflow, CommandPrefix  # noqa: F401
 from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare  # noqa: F401
 from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
 from mud.npcs import PeasantState  # noqa: F401
@@ -33,7 +32,8 @@ def send_callback_factory(chatkey):
 
 
 if __name__ == '__main__':
-    storage = Storage(send_callback_factory, redis=MockRedis())
+    cmd_pfx = CommandPrefix('/')
+    storage = Storage(send_callback_factory, redis=MockRedis(), cmd_pfx=cmd_pfx)
 
     for migrate in migrations:
         # print "Apply migration %s" % migrate
@@ -72,12 +72,12 @@ if __name__ == '__main__':
 
     # for s in cmds:
     while True:
-        chatflow = Chatflow(player, storage.world, cmd_pfx=CommandPrefix('/'))
+        chatflow = Chatflow(player, storage.world, cmd_pfx=cmd_pfx)
         chatflow.process_message(s)
 
         try:
             # s = input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
-            s = input('%s> ' % ((player.input, player.chain),))
+            s = input(f'{player.counters}> ')
         except (EOFError, KeyboardInterrupt):
             break
 

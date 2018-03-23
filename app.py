@@ -24,7 +24,7 @@ def webhook():
         message = update.message.text
         chatkey = update.message.chat_id
 
-        storage = Storage(bot.send_callback_factory)
+        storage = Storage(bot.send_callback_factory, cmd_pfx=bot.cmd_pfx)
         chatflow = Chatflow(storage.get_player_state(chatkey), storage.world, bot.cmd_pfx)
         chatflow.process_message(message)
         storage.save()
@@ -35,12 +35,8 @@ def webhook():
 
 
 def enact(*args):
-    storage = Storage(bot.send_callback_factory)
+    storage = Storage(bot.send_callback_factory, cmd_pfx=bot.cmd_pfx)
     storage.world.enact()
-
-    for player in storage.world.all_players():
-        Chatflow(player, storage.world, bot.cmd_pfx).act()
-
     storage.save()
     bot.send_messages()
 

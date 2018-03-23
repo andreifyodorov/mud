@@ -3,7 +3,7 @@ from itertools import chain
 from .mutators import StateMutator
 from .locations import StartLocation, Direction
 from .commodities import ActionClasses, Commodity, DirtyRags
-from .states import PlayerState
+from .states import ActorState
 from .npcs import NpcState
 from .utils import list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
@@ -626,13 +626,32 @@ class Chatflow(StateMutator):
             self.actor.asleep = True
             self.actor.send("You fall asleep.")
 
-    def wakeup(self):
-        self.actor.last_command_time = self.world.time
+    def wakeup(self):  # called from dispatch
+        self.set_counter('active', 20)
         if self.actor.asleep:
             self.actor.asleep = False
             self.actor.send("You wake up.")
 
     def act(self):
-        if (self.actor.last_command_time is not None
-                and self.world.time - self.actor.last_command_time > 10):
+        super(Chatflow, self).act()
+        self.dec_counter('active')
+        if not self.is_('active'):
             self.sleep()
+
+
+class PlayerState(ActorState):
+    definite_name = '(player)'
+    mutator_class = Chatflow
+
+    def get_mutator(self, world):
+        return Chatflow(self, world, self.cmd_pfx)
+
+    def __init__(self, send_callback, cmd_pfx):
+        super(PlayerState, self).__init__()
+        self.send = send_callback or (lambda message: None)
+        self.cmd_pfx = cmd_pfx
+        self.asleep = False
+        self.last_command_time = None
+        self.last_location = None
+        self.input = {}
+        self.chain = {}

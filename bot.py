@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from mud.chatflow import CommandPrefix
+from mud.player import CommandPrefix
 import settings
 
 import telegram

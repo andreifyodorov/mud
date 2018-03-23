@@ -1,6 +1,4 @@
-from .states import State, PlayerState
-from .npcs import NpcState
-from .locations import Location, StartLocation, Forests
+from .locations import Location, Forests
 from .commodities import Commodity, Mushroom
 from .utils import FilterSet
 
@@ -19,11 +17,8 @@ class WorldState(dict):
             value = self[key] = LocationState()
         return value
 
-    def all_npcs(self):
-        return (a for l in self.values() for a in l.npcs())
-
-    def all_players(self):
-        return (a for l in self.values() for a in l.players())
+    def actors(self):
+        return (a for l in self.values() for a in l.actors)
 
     def spawn(self, cls, where):
         where = self[where.id]
@@ -37,10 +32,10 @@ class WorldState(dict):
     def enact(self):
         self.time = self.time or 0
 
-        # enact npcs
-        npcs = set(self.all_npcs())  # npc can change location
-        for npc in npcs:
-            npc.get_mutator(self).act()
+        # enact actors
+        actors = set(self.actors())  # actors can change location
+        for actor in actors:
+            actor.get_mutator(self).act()
 
         # mushrooms
         mushrooms = list(c for l in Forests.values() for c in self[l.id].items.filter(Mushroom))
@@ -56,14 +51,8 @@ class LocationState(object):
         self.actors = FilterSet()
         self.means = FilterSet()
 
-    def npcs(self):
-        return self.actors.filter(NpcState)
-
-    def players(self):
-        return self.actors.filter(PlayerState)
-
     def broadcast(self, message, skip_sender=None):
-        for actor in self.actors.filter(PlayerState):
+        for actor in self.actors:
             if skip_sender is not None and actor is skip_sender or actor.asleep:
                 continue
             actor.send(message)

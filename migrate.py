@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
-from mud.chatflow import Chatflow
+from pprint import pprint
+from deepdiff import DeepDiff
+
+from mud.player import Chatflow
 from mud.locations import Field, TownGate, VillageHouse, MarketSquare, Factory
 from mud.production import Land, Distaff, Workbench
 from mud.npcs import PeasantState, GuardState, MerchantState
@@ -68,7 +71,7 @@ def migrate_4(storage):
     for actor in storage.all_players():
         actor.wears = DirtyRags()
 
-    for actor in storage.all_npcs():
+    for actor in storage.world.actors():
         if isinstance(actor, PeasantState):
             actor.name = "Jack"
             actor.wears = RoughspunTunic()
@@ -86,7 +89,7 @@ def migrate_5(storage):
     for player in storage.all_players():
         player.send("Game updated to version 5. Added a merchant.")
 
-    for actor in storage.all_npcs():
+    for actor in storage.world.actors():
         if isinstance(actor, GuardState):
             actor.name = "a gate guard"
 
@@ -111,10 +114,30 @@ def migrate_6(storage):
 
 
 @version
-def migrate_7(storage):
+def migrate_6_1(storage):
     for player in storage.all_players():
         if player.last_command_time is None:
             player.last_command_time = storage.world.time
+
+
+@version
+def migrate_6_2(storage):
+    for player in storage.all_players():
+        time = storage.world.time
+        mutator = player.get_mutator(storage.world)
+
+        if hasattr(player, "last_command_time"):
+            last_time = player.last_command_time
+            distance = 20 if not last_time else 21 - time + last_time
+            if distance <= 20:
+                mutator.set_counter("active", distance)
+            player.last_command_time = None
+
+        if hasattr(player, "last_success_time"):
+            last_time = player.last_success_time
+            if player.last_success_time == time:
+                mutator.set_counter("cooldown", 1)
+            player.last_success_time = None
 
 
 def dry_send_callback_factory(chatkey):
@@ -124,12 +147,13 @@ def dry_send_callback_factory(chatkey):
 
 
 def migrate(dry_run=True):
-    storage = Storage(dry_send_callback_factory if dry_run else bot.send_callback_factory)
+    storage = Storage(dry_send_callback_factory if dry_run else bot.send_callback_factory, bot.cmd_pfx)
 
     version = storage.version
 
     if dry_run:
         print("No worries, it's a dry run")
+        current_dump = dict(storage.dump())
 
     version = version or 0
     print(f"Current version is {version}")
@@ -141,6 +165,9 @@ def migrate(dry_run=True):
     storage.version = version
     if dry_run:
         storage.print_dump()
+        print()
+        print("Difference:")
+        pprint(DeepDiff(current_dump, dict(storage.dump())))
         storage.lock_object.release()
     else:
         storage.save()
