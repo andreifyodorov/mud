@@ -1,8 +1,9 @@
+import collections
 from itertools import chain
 
 from .mutators import StateMutator
 from .locations import StartLocation, Direction
-from .commodities import ActionClasses, Commodity, DirtyRags
+from .commodities import ActionClasses, DirtyRags
 from .states import ActorState
 from .npcs import NpcState
 from .utils import list_sentence, pretty_list, group_by_class, FilterSet
@@ -256,9 +257,11 @@ class Chatflow(StateMutator):
         raise UnknownChatflowCommand
 
     def reply(self, result):
+        if isinstance(result, FilterSet):  # some methods return them
+            return
         if isinstance(result, str):
             self.actor.send(result)
-        elif result is not None:
+        elif isinstance(result, collections.Iterable):
             self.actor.send("\n".join(result))
 
     def input(self, cmd, f, prompt):
@@ -361,7 +364,7 @@ class Chatflow(StateMutator):
                     lambda *args:
                         "You have nothing you can %s." % cls.verb
                         if not any(self.actor.bag.filter(cls))
-                        else self.choice(cls.verb, lambda i: self.use_commodity(cls.verb, i),
+                        else self.choice(cls.verb, lambda i: getattr(self, cls.verb)(i),
                                          self.actor.bag.filter(cls), skip_single=True)(*args))
 
             yield (
@@ -434,7 +437,6 @@ class Chatflow(StateMutator):
 
             dict(arg='counterparty',
                  bag=(o for o in self.others if o.barters),
-                 # check=self.barter_counterparty,  #TODO: looks like we don't need this check
                  prompt="whom to barter with",
                  skip_single=True),
 
@@ -446,11 +448,6 @@ class Chatflow(StateMutator):
                  bag=self.actor.bag,
                  prompt="what to barter off")
         )
-
-    def barter(self, counterparty, what, for_what):
-        if super(Chatflow, self).barter(counterparty, what, for_what):
-            yield 'You barter %s for %s with %s.' \
-                  % (pretty_list(what), pretty_list(for_what), counterparty.name)
 
     def get_sell_chain(self):
         return self.choice_chain(
@@ -467,12 +464,6 @@ class Chatflow(StateMutator):
                  prompt="what to sell")
         )
 
-    def sell(self, counterparty, what):
-        if super(Chatflow, self).sell(counterparty, what):
-            yield 'You sell %s to %s for %d credits.' \
-                  % (pretty_list(what), counterparty.name,
-                     1 if isinstance(what, Commodity) else len(what))
-
     def get_buy_chain(self):
         return self.choice_chain(
             'buy',
@@ -488,21 +479,14 @@ class Chatflow(StateMutator):
                  prompt="what to buy")
         )
 
-    def buy(self, counterparty, what):
-        if super(Chatflow, self).buy(counterparty, what):
-            yield 'You buy %s from %s for %d credits.' \
-                  % (pretty_list(what), counterparty.name,
-                     1 if isinstance(what, Commodity) else len(what))
-
     def where(self, verb=None):
         actor = self.actor
         location = actor.location
         last_location = actor.last_location
 
         if not verb:
-            verb = (
-                "are still" if last_location and location.descr == last_location.descr
-                else "are")
+            verb = ("are still" if last_location and location.descr == last_location.descr
+                    else "are")
 
         actor.last_location = location
         yield 'You %s %s' % (verb, location.descr)
@@ -525,7 +509,7 @@ class Chatflow(StateMutator):
         others = FilterSet(self.others)
         if others:
             if len(others) > 1:
-                yield "You see people:"
+                yield "You see:"
                 actor_groups = (others.filter(cls) for cls in (NpcState, PlayerState))
                 for actor_group in actor_groups:
                     for actor in sorted(actor_group, key=lambda a: a.name):
@@ -550,26 +534,11 @@ class Chatflow(StateMutator):
             return self.where()
 
     def pick(self, item_or_items):
-        items = super(Chatflow, self).pick(item_or_items)
-        yield "You put %s into your %sbag." % (pretty_list(items), self.cmd_pfx)
-
-    def drop(self, item_or_items):
-        items = super(Chatflow, self).drop(item_or_items)
-        yield "You drop %s on the ground." % pretty_list(items)
-
-    def wield(self, item):
-        # This, a bit hacky method, gets called from produce
-        if super(Chatflow, self).wield(item):
-            self.actor.send("You wield %s." % item.name)
+        super(Chatflow, self).pick(item_or_items,
+                                   anounce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
 
     def unequip(self):
-        item = super(Chatflow, self).unequip()
-        if item:
-            yield "You put %s back into your %sbag." % (item.name, self.cmd_pfx)
-
-    def use_commodity(self, verb, item_or_items):
-        if getattr(super(Chatflow, self), verb)(item_or_items):
-            yield "You %s %s." % (verb, pretty_list(item_or_items))
+        super(Chatflow, self).unequip(anounce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
 
     def bag(self):
         credits_message = None
@@ -599,10 +568,6 @@ class Chatflow(StateMutator):
             yield credits_message
             yield "You can %s items." % actions_sentence
 
-    def die(self):
-        super(Chatflow, self).die()
-        return "You die."
-
     def produce(self, means):
         missing = list()
         fruits = super(Chatflow, self).produce(means, missing)
@@ -624,19 +589,24 @@ class Chatflow(StateMutator):
     def sleep(self):
         if not self.actor.asleep:
             self.actor.asleep = True
-            self.actor.send("You fall asleep.")
+            self.anounce("falls asleep.", "fall asleep.")
 
     def wakeup(self):  # called from dispatch
         self.set_counter('active', 20)
         if self.actor.asleep:
             self.actor.asleep = False
-            self.actor.send("You wake up.")
+            self.anounce("wakes up.", "wake up.")
+
+    def spawn(self, location):
+        super(Chatflow, self).spawn(location)
+        self.wakeup()
 
     def act(self):
         super(Chatflow, self).act()
-        self.dec_counter('active')
-        if not self.is_('active'):
-            self.sleep()
+        if self.actor.alive:
+            self.dec_counter('active')
+            if not self.is_('active'):
+                self.sleep()
 
 
 class PlayerState(ActorState):

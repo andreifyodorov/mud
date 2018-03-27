@@ -69,8 +69,7 @@ class PeasantMutator(NpcMutator):
     default_wear = RoughspunTunic
 
     def ai(self):
-        edibles = (i for i in self.location.items if isinstance(i, Edibles))
-        if self.pick(edibles):
+        if self.pick(self.location.items.filter(Edibles)):
             return  # end cycle
 
         if self.actor.hungry:

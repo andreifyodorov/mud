@@ -97,11 +97,11 @@ class ChatflowTestCase(unittest.TestCase):
 
     def get_option(self, match):
         option = None
-        for lines in self.messages:
-            for line in lines.split("\n"):
-                if match in line:
-                    option = line[:2]
-        self.assertTrue(option is not None)
+        messages = "\n".join(self.messages)
+        for line in messages.split("\n"):
+            if match in line:
+                option = line[:2]
+        self.assertTrue(option is not None, f"Can't find '{match}' in '{messages}'")
         return option
 
     def test_01_start(self):
@@ -148,6 +148,19 @@ class ChatflowTestCase(unittest.TestCase):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
         mutator = peasant.get_mutator(self.storage.world)
 
+        self.send('#drop')
+        self.send(self.get_option("vegetable"))
+
+        self.cycle(
+            self.storage.world.enact,
+            lambda: any(peasant.bag.filter(Vegetable)),
+            "Peasant didn't pick a vegetable up")
+
+        self.cycle(
+            self.storage.world.enact,
+            lambda: not any(peasant.bag.filter(Vegetable)),
+            "Peasant didn't eat a vegetable")
+
         self.send('#north')
         self.send('#enter')
 
@@ -185,6 +198,7 @@ class ChatflowTestCase(unittest.TestCase):
 
     def test_04_barter(self):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
+        self.player.bag.add(Vegetable())
         self.send('#barter')
         self.send(self.get_option('spindle'))
         self.assertReplyContains('#1')
@@ -240,11 +254,18 @@ class ChatflowTestCase(unittest.TestCase):
     def test_07_merchant(self):
         self.send('#north')
         self.send('#north')
+        old_bag_len = len(self.player.bag)
         self.assertReplyContains('merchant')
         self.send('#sell')
         self.assertReplyContains('#1')
         self.send('#1')
+        self.assertTrue(old_bag_len > len(self.player.bag))
         self.assertTrue(self.player.credits > 0)
+        self.send('#buy')
+        self.assertReplyContains('#1')
+        self.send('#1')
+        self.assertTrue(old_bag_len == len(self.player.bag))
+        self.assertTrue(self.player.credits == 0)
 
     def test_08_shovel(self):
         self.send('#west')

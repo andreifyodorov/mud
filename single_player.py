@@ -2,7 +2,7 @@
 
 from mud.player import PlayerState, Chatflow, CommandPrefix  # noqa: F401
 from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare  # noqa: F401
-from mud.commodities import Vegetable, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
+from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
 from mud.npcs import PeasantState  # noqa: F401
 from test import MockRedis
 from storage import Storage
@@ -41,8 +41,8 @@ if __name__ == '__main__':
 
     player = storage.get_player_state(PLAYER_CHATKEY)
     player.name = 'Andrey'
-    player.bag.update([Shovel()])
-    Chatflow(player, storage.world).spawn(Field)
+    player.bag.update([Shovel(), Mushroom()])
+    Chatflow(player, storage.world).spawn(MarketSquare)
 
     observer = storage.get_player_state(OBSERVER_CHATKEY)
     observer.name = 'A silent observer'

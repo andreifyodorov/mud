@@ -1,5 +1,5 @@
-from .commodities import Commodity, Wearables, Wieldables, Deteriorates
-from .utils import pretty_list
+from .commodities import Commodity, Wearables, Wieldables, Deteriorates, Mushroom
+from .utils import pretty_list, FilterSet
 from itertools import chain
 
 
@@ -16,17 +16,24 @@ class StateMutator(object):
     def others(self):
         return (a for a in self.location.actors if a is not self.actor)
 
-    def set_counter(self, counter, value):
+    def set_counter(self, counter, value, anounce=None):
         if value > 0:
             self.actor.counters[counter] = value - 1
+            if anounce:
+                self.anounce(f"is {anounce}.", f"are {anounce}.")
+            return True
+        return False
 
-    def dec_counter(self, counter):
+    def dec_counter(self, counter, anounce=None):
         value = self.actor.counters.get(counter, None)
         if value is not None and value > 0:
             self.actor.counters[counter] = value - 1
+            return False
         else:
             if value is not None:
                 del self.actor.counters[counter]
+                if anounce:
+                    self.anounce(f"is {anounce}.", f"are {anounce}")
             return True
 
     def is_(self, doing):
@@ -34,9 +41,12 @@ class StateMutator(object):
 
     def act(self):
         self.dec_counter('cooldown')
+        self.dec_counter('high', anounce="not high anymore.")
 
-    def anounce(self, message):
-        self.location.broadcast("%s %s" % (self.actor.Name, message), skip_sender=self.actor)
+    def anounce(self, message, reflect=None):
+        self.location.broadcast(f"{self.actor.Name} {message}", skip_sender=self.actor)
+        if reflect:
+            self.actor.send(f"You {reflect}")
 
     def say_to(self, actor, message):
         actor.send("*%s*: %s" % (self.actor.Name, message))
@@ -52,7 +62,7 @@ class StateMutator(object):
 
     def die(self):
         if self.actor.alive:
-            self.anounce('dies.')
+            self.anounce('dies.', 'die.')
             self.location.actors.remove(self.actor)
             self.location.items.update(self.actor.bag)
             self.actor.bag.clear()
@@ -87,24 +97,29 @@ class StateMutator(object):
             if destination is not None:
                 destination.update(items)
             source.difference_update(items)
-        return items
+        return FilterSet(items)
 
-    def pick(self, item_or_items):
+    def pick(self, item_or_items, anounce=None):
         items = self._relocate(item_or_items, self.location.items, self.actor.bag)
         if items:
-            self.anounce('picks up %s.' % pretty_list(items))
+            items_str = pretty_list(items)
+            self.anounce(f'picks up {items_str}.', anounce and anounce(items_str))
         return items
 
     def drop(self, item_or_items):
         items = self._relocate(item_or_items, self.actor.bag, self.location.items)
         if items:
-            self.anounce('drops %s on the ground.' % pretty_list(items))
+            items_str = pretty_list(items)
+            self.anounce(f'drops {items_str} on the ground.', f'drop {items_str} on the ground.')
         return items
 
     def eat(self, item_or_items):
         items = self._relocate(item_or_items, self.actor.bag)
         if items:
-            self.anounce('eats %s.' % pretty_list(items))
+            items_str = pretty_list(items)
+            self.anounce(f'eats {items_str}.', f'eat {items_str}.')
+        if any(items.filter(Mushroom)):
+            self.set_counter('high', 5, anounce='high')
         return items
 
     def _relocate_to_slot(self, slot, item):
@@ -122,20 +137,18 @@ class StateMutator(object):
 
     def wear(self, item):
         if isinstance(item, Wearables) and self._relocate_to_slot('wears', item):
-            self.anounce('wears %s.' % item.name)
-            return True
-        return False
+            self.anounce(f'wears {item.name}.', f'wear {item.name}.')
+            return item
 
     def wield(self, item):
         if isinstance(item, Wieldables) and self._relocate_to_slot('wields', item):
-            self.anounce('wields %s.' % item.name)
-            return True
-        return False
+            self.anounce(f'wields {item.name}.', f'wield {item.name}.')
+            return item
 
-    def unequip(self):
+    def unequip(self, anounce=None):
         item = self.actor.wields
         if item:
-            self.anounce('puts away %s.' % item.name)
+            self.anounce(f'puts away {item.name}.', anounce and anounce(item))
             self.actor.wields = None
             self.actor.bag.add(item)
             return item
@@ -143,43 +156,39 @@ class StateMutator(object):
     def barter(self, counterparty, what, for_what):
         if (counterparty.barters
                 and counterparty.get_mutator(self.world).accept_barter(self.actor, what, for_what)):
-            self.anounce('barters %s for %s with %s.'
-                         % (pretty_list(what), pretty_list(for_what), counterparty.name))
-            return True
-        return False
+            anounce = f"{pretty_list(what)} for {pretty_list(for_what)} with {counterparty.name}"
+            self.anounce(f'barters {anounce}.', f'barter {anounce}.')
 
     def accept_barter(self, counterparty, what, for_what):
         return (
             self._relocate(what, counterparty.bag, self.actor.bag)
             and self._relocate(for_what, self.actor.bag, counterparty.bag))
 
-    def sell(self, counterparty, what):
-        if (counterparty.buys
-                and counterparty.get_mutator(self.world).accept_buy(self.actor, what)):
-            self.anounce('sells %s to %s.' % (pretty_list(what), counterparty.name))
-            return True
-        return False
-
-    def accept_sell(self, counterparty, what):
-        self._relocate(what, self.actor.bag, counterparty.bag)
-        price = 1 if isinstance(what, Commodity) else len(what)
-        self.actor.credits += price
-        counterparty.credits -= price
-        return True
+    def _make_transaction(self, verb, prep, counterparty, what, price, source, destination):
+        if self._relocate(what, source, destination):
+            self.actor.credits -= price
+            counterparty.credits += price
+            anounce = f"{pretty_list(what)} {prep} {counterparty.name}"
+            credits = "credits" if price > 1 else "credit"
+            self.anounce(f'{verb}s {anounce}.', f'{verb} {anounce} for {abs(price):d} {credits}.')
 
     def buy(self, counterparty, what):
-        if (counterparty.sells
-                and counterparty.get_mutator(self.world).accept_sell(self.actor, what)):
-            self.anounce('buys %s from %s.' % (pretty_list(what), counterparty.name))
-            return True
-        return False
+        if counterparty.sells:
+            price = counterparty.get_mutator(self.world).accept_buy(self.actor, what)
+            if price:
+                self._make_transaction("buy", "from", counterparty, what, price, counterparty.bag, self.actor.bag)
 
-    def accept_buy(self, counterparty, what):
-        self._relocate(what, counterparty.bag, self.actor.bag)
-        price = 1 if isinstance(what, Commodity) else len(what)
-        self.actor.credits -= price
-        counterparty.credits += price
-        return True
+    def sell(self, counterparty, what):
+        if counterparty.buys:
+            price = counterparty.get_mutator(self.world).accept_sell(self.actor, what)
+            if price:
+                self._make_transaction("sell", "to", counterparty, what, -price, self.actor.bag, counterparty.bag)
+
+    def _get_price(self, counterparty, what):
+        return 1 if isinstance(what, Commodity) else len(what)
+
+    accept_buy = _get_price
+    accept_sell = _get_price
 
     def produce_missing(self, means, missing=None):
         if missing is None:
