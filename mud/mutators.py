@@ -1,5 +1,5 @@
 from .commodities import Commodity, Wearables, Wieldables, Deteriorates, Mushroom
-from .utils import pretty_list, FilterSet
+from .utils import credits, pretty_list, FilterSet
 from itertools import chain
 
 
@@ -169,8 +169,7 @@ class StateMutator(object):
             self.actor.credits -= price
             counterparty.credits += price
             anounce = f"{pretty_list(what)} {prep} {counterparty.name}"
-            credits = "credits" if price > 1 else "credit"
-            self.anounce(f'{verb}s {anounce}.', f'{verb} {anounce} for {abs(price):d} {credits}.')
+            self.anounce(f'{verb}s {anounce}.', f'{verb} {anounce} for {credits(abs(price))}.')
 
     def buy(self, counterparty, what):
         if counterparty.sells:

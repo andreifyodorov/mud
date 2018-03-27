@@ -1,6 +1,14 @@
 from itertools import groupby
 
 
+def credits(x):
+    if not x:
+        return "no credits"
+    if x > 1:
+        return "{x:d} credits"
+    return "1 credit"
+
+
 def list_sentence(names, glue=None):
     """
     >>> list_sentence(['apples'])

@@ -6,7 +6,7 @@ from .locations import StartLocation, Direction
 from .commodities import ActionClasses, DirtyRags
 from .states import ActorState
 from .npcs import NpcState
-from .utils import list_sentence, pretty_list, group_by_class, FilterSet
+from .utils import credits, list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
 
 
@@ -347,9 +347,7 @@ class Chatflow(StateMutator):
                 'bag',
                 lambda:
                     self.bag() if self.actor.bag
-                    else 'Your bag is empty. You have %d credits.' % self.actor.credits
-                    if self.actor.credits
-                    else 'Your bag is empty and you have no credits.')
+                    else f'Your bag is empty. You have {credits(self.actor.credits)}.')
 
             yield (
                 'drop',
@@ -534,39 +532,30 @@ class Chatflow(StateMutator):
             return self.where()
 
     def pick(self, item_or_items):
-        super(Chatflow, self).pick(item_or_items,
-                                   anounce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
+        super(Chatflow, self).pick(
+            item_or_items, anounce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
 
     def unequip(self):
         super(Chatflow, self).unequip(anounce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
 
     def bag(self):
-        credits_message = None
-        if self.actor.credits > 1:
-            credits_message = "You have %d credits." % self.actor.credits
-        elif self.actor.credits == 1:
-            credits_message = "You have 1 credit."
-        else:
-            credits_message = "You have no credits."
-
         actions = ['drop']
         for cls in ActionClasses.__subclasses__():
             if any(self.actor.bag.filter(cls)):
                 actions.append(cls.verb)
-        actions_sentence = list_sentence(("%s%s" % (self.cmd_pfx, a) for a in actions), glue="or")
+        actions_sentence = list_sentence((f"{self.cmd_pfx}{a}" for a in actions), glue="or")
 
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
-            yield "In your bag there's nothing but %s. You can %s it."  \
-                % (item.descr, actions_sentence)
-            yield credits_message
+            yield f"In your bag there's nothing but {item.descr}. You can {actions_sentence} it."
+            yield f"You have {credits(self.actor.credits)}."
         else:
             yield "You look into your bag and see:"
             for n, (caption, item) in enumerate(group_by_class(self.actor.bag)):
-                yield "%d. %s" % (n + 1, caption)
+                yield f"{n + 1:d}. {caption}"
 
-            yield credits_message
-            yield "You can %s items." % actions_sentence
+            yield f"You have {credits(self.actor.credits)}."
+            yield f"You can {actions_sentence} items."
 
     def produce(self, means):
         missing = list()
