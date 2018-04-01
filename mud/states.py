@@ -1,3 +1,4 @@
+from . import commodities
 from .utils import FilterSet
 
 
@@ -31,20 +32,21 @@ class ActorState(State):
     sells = False
     buys = False
     asleep = False
+    max_hitpoints = None
 
     def __init__(self, name=None):
         super(ActorState, self).__init__()
         self.name = name
         self.counters = {}
+        self.cooldown = {}
         self.alive = False
         self.location = None
         self.bag = FilterSet()
         self.credits = 0
         self.wears = None
         self.wields = None
-        self.attacking = None
-        self.hit_points = 10
-        self.last_success_time = None
+        self.victim = None
+        self.hitpoints = None
 
     @property
     def name_without_icon(self):
@@ -65,6 +67,14 @@ class ActorState(State):
             return self.abstract_descr
         else:
             return self.name
+
+    @property
+    def weapon(self):
+        return self.wields if self.wields and isinstance(self.wields, commodities.Weapon) else None
+
+    def is_weapon_method(self, method):
+        w = self.weapon
+        return w and w.attack is method
 
     def send(self, msg):
         pass

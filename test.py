@@ -129,10 +129,10 @@ class ChatflowTestCase(unittest.TestCase):
 
         self.send('#farm')
         self.assertReplyContains('fail')
-        self.assertEqual(self.player.counters["cooldown"], 0)
+        self.assertEqual(self.player.cooldown["produce"], 0)
 
         self.chatflow.act()
-        self.assertNotIn('cooldown', self.player.counters)
+        self.assertNotIn('produce', self.player.cooldown)
 
         self.send('#farm')
 

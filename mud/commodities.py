@@ -1,3 +1,4 @@
+from .attacks import Bash
 from .states import State
 
 
@@ -135,11 +136,16 @@ class Spindle(Deteriorates, Commodity, Wieldables):
     deteriorate_message = '%s spindle disintegrates.'
 
 
-class Shovel(Deteriorates, Commodity, Wieldables):
+class Weapon(object):
+    pass
+
+
+class Shovel(Deteriorates, Commodity, Wieldables, Weapon):
     max_usages = 5
     abstract_name = 'a%s shovel'
     abstract_plural = '%d%s shovels'
     deteriorate_message = '%s shovel falls apart.'
+    attack = Bash
 
 
 class Wearables(ActionClasses):

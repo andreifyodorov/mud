@@ -178,8 +178,10 @@ class Storage(object):
             return ('PlayerState', self.chatkeys[o])
         elif isinstance(o, self.entity_classes):
             return self.serialize_entity(o)
-        elif isinstance(o, (set, list)):
+        elif isinstance(o, list):
             return [self.serialize(x) for x in o]
+        elif isinstance(o, set):
+            return sorted(self.serialize(list(o)))
         elif isinstance(o, dict):
             serialized = {}
             for k, v in o.items():

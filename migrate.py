@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from pprint import pprint
-from deepdiff import DeepDiff
 
 from mud.player import Chatflow
 from mud.locations import Field, TownGate, VillageHouse, MarketSquare, Factory
@@ -11,6 +10,8 @@ from mud.commodities import DirtyRags, RoughspunTunic, Overcoat
 
 from bot import bot
 from storage import Storage
+
+from deepdiff import DeepDiff
 
 
 migrations = list()
@@ -167,7 +168,7 @@ def migrate(dry_run=True):
         storage.print_dump()
         print()
         print("Difference:")
-        pprint(DeepDiff(current_dump, dict(storage.dump())))
+        pprint(DeepDiff(current_dump, dict(storage.dump()), verbose_level=2))
         storage.lock_object.release()
     else:
         storage.save()

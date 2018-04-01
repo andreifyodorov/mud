@@ -1,13 +1,14 @@
 import collections
 from itertools import chain
 
-from .mutators import StateMutator
+from .mutators import ActorMutator
 from .locations import StartLocation, Direction
-from .commodities import ActionClasses, DirtyRags
+from .commodities import ActionClasses, DirtyRags, Weapon
 from .states import ActorState
 from .npcs import NpcState
 from .utils import credits, list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
+from .attacks import HumanAttacks
 
 
 class CommandPrefix(str):
@@ -211,7 +212,7 @@ class UnknownChatflowCommand(Exception):
     pass
 
 
-class Chatflow(StateMutator):
+class Chatflow(ActorMutator, HumanAttacks):
     default_wear = DirtyRags
 
     def __init__(self, actor, world, cmd_pfx=None):
@@ -328,6 +329,24 @@ class Chatflow(StateMutator):
                     else 'Your have no credits to buy anything.' if not self.actor.credits
                     else self.get_buy_chain()(*args))
 
+            yield (
+                'attack',
+                lambda *args:
+                    "There's no one here you can attack."
+                    if not any(self.others)
+                    else self.choice('attack', self.attack, self.others,
+                                     prompt="whom to attack", skip_single=True)(*args))
+
+            attacks = set(self.organic_attacks)
+            attacks.update(cls.attack for cls in Weapon.__subclasses__())
+            for attack in attacks:
+                yield (
+                    attack.verb,
+                    lambda:
+                        "You're not attacking anyone"
+                        if not self.actor.victim
+                        else f"You fail to {attack} {self.actor.victim.name}." if not self.kick(attack) else None)
+
             nothing_there = 'There is nothing on the ground that you can pick up.',
             yield (
                 'pick',
@@ -375,7 +394,7 @@ class Chatflow(StateMutator):
                     lambda:
                         self.produce(next(self.location.means.filter(cls)))
                         if any(self.location.means.filter(cls))
-                        else "You can't %s here" % cls.verb)
+                        else "You can't {cls.verb} here.")
 
             yield ('sleep', lambda: self.sleep() if not self.actor.asleep else "You're alreay asleep.")
 
@@ -423,8 +442,6 @@ class Chatflow(StateMutator):
             yield "You see %s." % actor.descr
             if actor.wears:
                 yield "%s wears %s." % (actor.Name, actor.wears.descr)
-            else:
-                yield "%s is naked." % actor.Name
             if actor.wields:
                 yield "%s wields %s." % (actor.Name, actor.wields.descr)
 
@@ -510,22 +527,23 @@ class Chatflow(StateMutator):
                 yield "You see:"
                 actor_groups = (others.filter(cls) for cls in (NpcState, PlayerState))
                 for actor_group in actor_groups:
-                    for actor in sorted(actor_group, key=lambda a: a.name):
+                    for actor in sorted(actor_group, key=lambda a: (type(a).__name__, a.name)):
                         yield "  • %s" % actor.descr
             else:
                 for actor in others:
                     yield "You see %s." % actor.descr
 
-            actions = ['take a closer %slook at them']
+            actions = [f'take a closer {self.cmd_pfx}look at them']
             if any(a.barters for a in others):
-                actions.append('%sbarter')
+                actions.append(f'{self.cmd_pfx}barter')
             if any(a.sells for a in others):
-                actions.append('%sbuy')
+                actions.append(f'{self.cmd_pfx}buy')
             if any(a.buys for a in others):
-                actions.append('%ssell')
+                actions.append(f'{self.cmd_pfx}sell')
+            actions.append(f'{self.cmd_pfx}attack')
 
-            actions = (a % self.cmd_pfx for a in actions)
-            yield "You can %s." % (list_sentence(actions, glue="or"))
+            actions_sentence = list_sentence(actions, glue="or")
+            yield f"You can {actions_sentence}."
 
     def go(self, direction):
         if super(Chatflow, self).go(direction):
@@ -590,17 +608,23 @@ class Chatflow(StateMutator):
         super(Chatflow, self).spawn(location)
         self.wakeup()
 
+    def attack(self, whom):
+        methods = self.attack_methods()
+        methods = (f"{m} with {self.actor.weapon.name}" if self.actor.is_weapon_method(m) else m for m in methods)
+        methods = (f"{self.cmd_pfx}{m}" for m in methods)
+        attacks_sentence = list_sentence(methods, glue="or")
+        super(Chatflow, self).attack(whom, f'attack {whom.name}. You can {attacks_sentence}.')
+
     def act(self):
         super(Chatflow, self).act()
-        if self.actor.alive:
-            self.dec_counter('active')
-            if not self.is_('active'):
-                self.sleep()
+        if self.actor.alive and self.dec_counter('active'):
+            self.sleep()
 
 
 class PlayerState(ActorState):
-    definite_name = '(player)'
     mutator_class = Chatflow
+    definite_name = '(player)'
+    max_hitpoints = 5
 
     def get_mutator(self, world):
         return Chatflow(self, world, self.cmd_pfx)
@@ -610,7 +634,6 @@ class PlayerState(ActorState):
         self.send = send_callback or (lambda message: None)
         self.cmd_pfx = cmd_pfx
         self.asleep = False
-        self.last_command_time = None
         self.last_location = None
         self.input = {}
         self.chain = {}

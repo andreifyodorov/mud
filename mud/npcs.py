@@ -1,10 +1,11 @@
 from .states import ActorState
-from .mutators import StateMutator
+from .mutators import ActorMutator
 from .commodities import Edibles, DirtyRags, Overcoat, FlamboyantAttire, RoughspunTunic, Spindle
 from .locations import Field, Village, VillageHouse, TownGate, MarketSquare
+from .attacks import HumanAttacks, OrganicAttacks, Bite
 
 
-class NpcMutator(StateMutator):
+class NpcMutator(ActorMutator):
     class IsNotDoneYet(Exception):
         pass
 
@@ -36,10 +37,19 @@ class NpcMutator(StateMutator):
                 and self.dec_counter('hungry')):
             self.actor.hungry = True
 
+        if self.actor.victim:
+            for method in self.attack_methods():
+                self.kick(method)
+            if self.actor.victim:
+                return  # end cycle
+
         try:
             self.ai()
         except self.IsNotDoneYet:
             pass
+
+    def ai():
+        pass
 
 
 class NpcState(ActorState):
@@ -65,7 +75,7 @@ class NpcState(ActorState):
         return self.mutator_class(self, world)
 
 
-class PeasantMutator(NpcMutator):
+class PeasantMutator(NpcMutator, HumanAttacks):
     default_wear = RoughspunTunic
 
     def ai(self):
@@ -143,11 +153,8 @@ class PeasantState(NpcState):
         return len(self.bag) > 0
 
 
-class GuardMutator(StateMutator):
+class GuardMutator(ActorMutator, HumanAttacks):
     default_wear = Overcoat
-
-    def act(self):
-        pass
 
     def allow(self, visitor, to):
         if (isinstance(visitor.wears, DirtyRags)
@@ -167,11 +174,8 @@ class GuardState(NpcState):
     icon = '👮'
 
 
-class MerchantMutator(StateMutator):
+class MerchantMutator(ActorMutator, HumanAttacks):
     default_wear = FlamboyantAttire
-
-    def act(self):
-        pass
 
 
 class MerchantState(NpcState):
@@ -189,11 +193,12 @@ class MerchantState(NpcState):
         return len(self.for_sale) > 0
 
 
-class RatMutator(StateMutator):
-    pass
+class RatMutator(ActorMutator, OrganicAttacks):
+    organic_attacks = {Bite}
 
 
 class RatState(NpcState):
     mutator_class = RatMutator
     abstract_name = 'a rat'
     icon = '🐀'
+    max_hitpoints = 2

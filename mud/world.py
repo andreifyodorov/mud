@@ -1,5 +1,6 @@
-from .locations import Location, Forests
+from .locations import Location, Field, Forests
 from .commodities import Commodity, Mushroom
+from .npcs import NpcState, RatState
 from .utils import FilterSet
 
 from random import choice
@@ -21,11 +22,14 @@ class WorldState(dict):
         return (a for l in self.values() for a in l.actors)
 
     def spawn(self, cls, where):
-        where = self[where.id]
         if issubclass(cls, Commodity):
             item = cls()
+            where = self[where.id]
             where.items.add(item)
             where.broadcast(f"{item.Name} materializes.")
+        elif issubclass(cls, NpcState):
+            npc = cls()
+            npc.get_mutator(self).spawn(where)
         else:
             raise Exception(f"Don't know how to spawn {cls}")
 
@@ -33,14 +37,21 @@ class WorldState(dict):
         self.time = self.time or 0
 
         # enact actors
-        actors = set(self.actors())  # actors can change location
-        for actor in actors:
-            actor.get_mutator(self).act()
+        # actors can change location so take a set
+        mutators = set(a.get_mutator(self) for a in self.actors())
+        for mutator in mutators:
+            mutator.act()
+        for mutator in mutators:
+            mutator.purge()
 
         # mushrooms
         mushrooms = list(c for l in Forests.values() for c in self[l.id].items.filter(Mushroom))
         if not mushrooms:
             self.spawn(Mushroom, choice(list(Forests.values())))
+
+        # rat
+        if not any(self[Field.id].actors.filter(RatState)):
+            self.spawn(RatState, Field)
 
         self.time += 1
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import re
+import pprint
+
 from mud.player import PlayerState, Chatflow, CommandPrefix  # noqa: F401
 from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare  # noqa: F401
 from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
@@ -9,7 +12,7 @@ from storage import Storage
 from migrate import migrations
 
 from colored import fore, style
-import re
+from deepdiff import DeepDiff
 
 
 PLAYER_CHATKEY = 1
@@ -42,7 +45,7 @@ if __name__ == '__main__':
     player = storage.get_player_state(PLAYER_CHATKEY)
     player.name = 'Andrey'
     player.bag.update([Shovel(), Mushroom()])
-    Chatflow(player, storage.world).spawn(MarketSquare)
+    Chatflow(player, storage.world).spawn(StartLocation)
 
     observer = storage.get_player_state(OBSERVER_CHATKEY)
     observer.name = 'A silent observer'
@@ -72,18 +75,19 @@ if __name__ == '__main__':
 
     # for s in cmds:
     while True:
-        chatflow = Chatflow(player, storage.world, cmd_pfx=cmd_pfx)
-        chatflow.process_message(s)
-
-        try:
-            # s = input('%s> ' % ' '.join('/' + c for c, h in chatflow.get_commands()))
-            s = input(f'{player.counters}> ')
-        except (EOFError, KeyboardInterrupt):
-            break
-
-        # break
-
-        if not s:
+        current_dump = dict(storage.dump())
+        if s:
+            chatflow = Chatflow(player, storage.world, cmd_pfx=cmd_pfx)
+            chatflow.process_message(s)
+        else:
             storage.world.enact()
             observe("World time: %d" % storage.world.time)
-    # storage.print_dump()
+
+        print(fore.DARK_GRAY
+              + pprint.pformat(DeepDiff(current_dump, dict(storage.dump()), verbose_level=2), width=120)
+              + style.RESET)
+
+        try:
+            s = input(f'> ')
+        except (EOFError, KeyboardInterrupt):
+            break

@@ -4,8 +4,51 @@ from itertools import chain
 
 
 class StateMutator(object):
-    def __init__(self, actor, world):
+    def __init__(self, actor):
         self.actor = actor
+
+    def anounce(self, message, reflect=None):
+        raise NotImplemented
+
+    def _set(self, counters, counter, value, anounce=None):
+        if value > 0:
+            counters[counter] = value - 1
+            if anounce:
+                self.anounce(f"is {anounce}.", f"are {anounce}.")
+            return True
+        return False
+
+    def _dec(self, counters, counter, anounce=None):
+        value = counters.get(counter, None)
+        if value is not None and value > 0:
+            counters[counter] = value - 1
+            return False
+        else:
+            if value is not None:
+                del counters[counter]
+                if anounce:
+                    self.anounce(f"is {anounce}.", f"are {anounce}.")
+            return True
+
+    def set_cooldown(self, counter, value, anounce=None):
+        return self._set(self.actor.cooldown, counter, value, anounce)
+
+    def dec_cooldowns(self):
+        for counter in set(self.actor.cooldown):
+            self._dec(self.actor.cooldown, counter)
+
+    def coolsdown(self, counter):
+        return counter in self.actor.cooldown
+
+    def act(self):
+        self.dec_cooldowns()
+
+
+class ActorMutator(StateMutator):
+    default_wear = None
+
+    def __init__(self, actor, world):
+        super(ActorMutator, self).__init__(actor)
         self.world = world
 
     @property
@@ -17,31 +60,13 @@ class StateMutator(object):
         return (a for a in self.location.actors if a is not self.actor)
 
     def set_counter(self, counter, value, anounce=None):
-        if value > 0:
-            self.actor.counters[counter] = value - 1
-            if anounce:
-                self.anounce(f"is {anounce}.", f"are {anounce}.")
-            return True
-        return False
+        return self._set(self.actor.counters, counter, value, anounce)
 
     def dec_counter(self, counter, anounce=None):
-        value = self.actor.counters.get(counter, None)
-        if value is not None and value > 0:
-            self.actor.counters[counter] = value - 1
-            return False
-        else:
-            if value is not None:
-                del self.actor.counters[counter]
-                if anounce:
-                    self.anounce(f"is {anounce}.", f"are {anounce}")
-            return True
+        return self._dec(self.actor.counters, counter, anounce)
 
     def is_(self, doing):
         return doing in self.actor.counters
-
-    def act(self):
-        self.dec_counter('cooldown')
-        self.dec_counter('high', anounce="not high anymore.")
 
     def anounce(self, message, reflect=None):
         self.location.broadcast(f"{self.actor.Name} {message}", skip_sender=self.actor)
@@ -56,6 +81,8 @@ class StateMutator(object):
             if self.default_wear:
                 self.actor.wears = self.default_wear()
             self.actor.alive = True
+            self.actor.hitpoints = self.actor.max_hitpoints
+            self.victim = None
             self.actor.location = location
             self.location.actors.add(self.actor)
             self.anounce('materializes.')
@@ -63,10 +90,12 @@ class StateMutator(object):
     def die(self):
         if self.actor.alive:
             self.anounce('dies.', 'die.')
+            self._relocate_to_slot('wields', None)
+            self._relocate_to_slot('wears', None)
+            self.drop(self.actor.bag)
             self.location.actors.remove(self.actor)
-            self.location.items.update(self.actor.bag)
-            self.actor.bag.clear()
             self.actor.location = None
+            self.cleanup_victims()
             self.actor.alive = False
 
     def go(self, direction):
@@ -126,10 +155,11 @@ class StateMutator(object):
         current = getattr(self.actor, slot)
         if current is item:
             return False
-        items = self._relocate(item, self.actor.bag)
-        if not items:
-            return False
-        item, = items
+        if item:  # can be None
+            items = self._relocate(item, self.actor.bag)
+            if not items:
+                return False
+            item, = items
         setattr(self.actor, slot, item)
         if current is not None:
             self.actor.bag.add(current)
@@ -149,8 +179,7 @@ class StateMutator(object):
         item = self.actor.wields
         if item:
             self.anounce(f'puts away {item.name}.', anounce and anounce(item))
-            self.actor.wields = None
-            self.actor.bag.add(item)
+            self._relocate_to_slot('wields', None)
             return item
 
     def barter(self, counterparty, what, for_what):
@@ -224,7 +253,7 @@ class StateMutator(object):
         if missing:
             return
 
-        if self.is_('cooldown'):
+        if self.coolsdown('produce'):
             return
 
         self._relocate(chain.from_iterable(materials.values()), self.actor.bag)
@@ -241,8 +270,7 @@ class StateMutator(object):
         else:
             self.unequip()
 
-        self.actor.last_success_time = self.world.time
-        self.set_counter('cooldown', 1)
+        self.set_cooldown('produce', 1)
         self.anounce('%ss %s.' % (means.verb, pretty_list(fruits)))
         self.actor.bag.update(fruits)
 
@@ -274,3 +302,48 @@ class StateMutator(object):
         self.location.broadcast(commodity.deteriorate(f"{self.actor.name}'s"), skip_sender=self.actor)
 
         return True
+
+    def attack(self, victim, anounce=None):
+        self.actor.victim = victim
+        if victim.victim is None:
+            victim.victim = self.actor
+        self.anounce(f'attacks {victim.name}.', anounce)
+
+    def cleanup_victims(self):
+        victim = self.actor.victim
+        if victim and (not victim.alive or not self.actor.alive):
+            if victim.victim is self:
+                victim.victim = None
+            self.actor.victim = None
+            return True
+
+    def kick(self, method):
+        victim = self.actor.victim
+        if not victim:
+            return False
+
+        if self.cleanup_victims():
+            return True
+
+        if self.coolsdown(method):
+            return False
+
+        if victim.max_hitpoints:
+            victim.hitpoints -= method.damage
+
+        if self.actor.is_weapon_method(method):
+            self.anounce(f'{method.verb_s} {victim.name} with {self.actor.weapon.name}.',
+                         f'{method} {victim.name} with {self.actor.weapon.name}.')
+        else:
+            self.anounce(f'{method.verb_s} {victim.name}.', f'{method} {victim.name}.')
+
+        self.set_cooldown(method.verb, method.cooldown_time)
+        return True
+
+    def act(self):
+        super(ActorMutator, self).act()
+        self.dec_counter('high', anounce="not high anymore.")  # should be a cooldown as well
+
+    def purge(self):
+        if self.actor.max_hitpoints and self.actor.hitpoints < 0:
+            self.die()
