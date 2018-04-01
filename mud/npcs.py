@@ -27,16 +27,6 @@ class NpcMutator(ActorMutator):
     def act(self):
         super(NpcMutator, self).act()
 
-        if ('resting' not in self.actor.counters
-                and not self.actor.tired
-                and self.dec_counter('tired')):
-            self.actor.tired = True
-
-        if ('eating' not in self.actor.counters
-                and not self.actor.hungry
-                and self.dec_counter('hungry')):
-            self.actor.hungry = True
-
         if self.actor.victim:
             for method in self.attack_methods():
                 self.kick(method)
@@ -48,7 +38,7 @@ class NpcMutator(ActorMutator):
         except self.IsNotDoneYet:
             pass
 
-    def ai():
+    def ai(self):
         pass
 
 
@@ -58,8 +48,6 @@ class NpcState(ActorState):
     def __init__(self, name=None):
         super(NpcState, self).__init__(name)
         self.doing_descr = None
-        self.hungry = False
-        self.tired = False
         self.accumulate = False
 
     @property
@@ -82,14 +70,13 @@ class PeasantMutator(NpcMutator, HumanAttacks):
         if self.pick(self.location.items.filter(Edibles)):
             return  # end cycle
 
-        if self.actor.hungry:
+        if not self.coolsdown('hungry'):
             edible = next(self.actor.bag.filter(Edibles), None)
             if edible and self.is_done("eating", "eating %s" % edible.name, 10):
                 self.eat(edible)
-                self.actor.hungry = False
-                self.set_counter("hungry", 100)
+                self.set_cooldown("hungry", 100)
 
-        if self.actor.tired:
+        if not self.coolsdown('tired'):
             if (self.actor.location is Field
                     and self.is_done("walking", "tired and going home", 5)):
                 self.go('north')
@@ -100,8 +87,7 @@ class PeasantMutator(NpcMutator, HumanAttacks):
 
             if (self.actor.location is VillageHouse
                     and self.is_done("resting", "resting", 20)):
-                self.actor.tired = False
-                self.set_counter("tired", 100)
+                self.set_cooldown("tired", 100)
 
         if (self.actor.location is VillageHouse
                 and not any(self.actor.bag.filter(Spindle))
@@ -153,7 +139,7 @@ class PeasantState(NpcState):
         return len(self.bag) > 0
 
 
-class GuardMutator(ActorMutator, HumanAttacks):
+class GuardMutator(NpcMutator, HumanAttacks):
     default_wear = Overcoat
 
     def allow(self, visitor, to):
@@ -174,7 +160,7 @@ class GuardState(NpcState):
     icon = '👮'
 
 
-class MerchantMutator(ActorMutator, HumanAttacks):
+class MerchantMutator(NpcMutator, HumanAttacks):
     default_wear = FlamboyantAttire
 
 
@@ -193,7 +179,7 @@ class MerchantState(NpcState):
         return len(self.for_sale) > 0
 
 
-class RatMutator(ActorMutator, OrganicAttacks):
+class RatMutator(NpcMutator, OrganicAttacks):
     organic_attacks = {Bite}
 
 
