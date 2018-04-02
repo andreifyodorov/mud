@@ -80,15 +80,6 @@ class ActorMutator(StateMutator):
     def others(self):
         return (a for a in self.location.actors if a is not self.actor)
 
-    def set_counter(self, counter, value, announce=None):
-        return self._set(self.actor.counters, counter, value, announce)
-
-    def dec_counter(self, counter, announce=None):
-        return self._dec(self.actor.counters, counter, announce)
-
-    def is_(self, doing):
-        return doing in self.actor.counters
-
     def announce(self, message, reflect=None):
         self.location.broadcast(f"{self.actor.Name} {message}", skip_sender=self.actor)
         if reflect and self.actor.recieves_announces:

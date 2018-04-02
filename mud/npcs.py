@@ -9,6 +9,15 @@ class NpcMutator(ActorMutator):
     class IsNotDoneYet(Exception):
         pass
 
+    def set_counter(self, counter, value, announce=None):
+        return self._set(self.actor.counters, counter, value, announce)
+
+    def dec_counter(self, counter, announce=None):
+        return self._dec(self.actor.counters, counter, announce)
+
+    def is_(self, doing):
+        return doing in self.actor.counters
+
     def is_done(self, doing, doing_descr, done_in):
         if doing not in self.actor.counters:
             self.set_counter(doing, done_in)
@@ -47,6 +56,7 @@ class NpcState(ActorState):
 
     def __init__(self, name=None):
         super(NpcState, self).__init__(name)
+        self.counters = {}
         self.doing_descr = None
         self.accumulate = False
 
