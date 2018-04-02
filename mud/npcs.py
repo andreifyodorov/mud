@@ -14,7 +14,7 @@ class NpcMutator(ActorMutator):
             self.set_counter(doing, done_in)
 
         if self.actor.doing_descr != doing_descr:
-            self.anounce("is %s." % doing_descr)
+            self.announce("is %s." % doing_descr)
             self.actor.doing_descr = doing_descr
 
         elif self.dec_counter(doing):
@@ -22,7 +22,7 @@ class NpcMutator(ActorMutator):
                 self.actor.doing_descr = None
             return True
 
-        raise self.IsNotDoneYet()
+        raise self.IsNotDoneYet
 
     def act(self):
         super(NpcMutator, self).act()
@@ -94,7 +94,7 @@ class PeasantMutator(NpcMutator, HumanAttacks):
                 and self.is_done("crafting", "making a spindle", 10)):
             spindle = Spindle()
             self.actor.bag.add(spindle)
-            self.anounce("makes %s." % spindle.name)
+            self.announce("makes %s." % spindle.name)
 
         if isinstance(self.actor.wears, DirtyRags) and not self.is_("walking"):
             tunic = next(self.actor.bag.filter(RoughspunTunic), None)

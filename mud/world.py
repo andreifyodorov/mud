@@ -64,6 +64,6 @@ class LocationState(object):
 
     def broadcast(self, message, skip_sender=None):
         for actor in self.actors:
-            if skip_sender is not None and actor is skip_sender or actor.asleep:
+            if skip_sender is not None and actor is skip_sender or not actor.recieves_announces:
                 continue
             actor.send(message)

@@ -7,31 +7,50 @@ class StateMutator(object):
     def __init__(self, actor):
         self.actor = actor
 
-    def anounce(self, message, reflect=None):
-        raise NotImplemented
+    def announce(self):
+        raise NotImplementedError
 
-    def _set(self, counters, counter, value, anounce=None):
+    def announce_cooldown(self, counter, is_set, is_new=False, announce=None):
+        if announce is None:
+            queue = {type(self)}
+            while queue:
+                cls = queue.pop()
+                queue.update(cls.__bases__)
+                if not hasattr(cls, 'cooldown_announce'):
+                    continue
+                if counter in cls.cooldown_announce:
+                    announces = cls.cooldown_announce[counter]
+                    key = 1 if is_set and is_new and 1 in announces else is_set
+                    announce = announces.get(key)
+                    break
+
+        if announce:
+            if isinstance(announce, tuple):
+                self.announce(*announce)
+            else:
+                self.announce(f"is {announce}.", f"are {announce}.")
+
+    def _set(self, counters, counter, value, announce=None):
         if value > 0:
+            is_new = counter in counters  # first change, then announce
             counters[counter] = value - 1
-            if anounce:
-                self.anounce(f"is {anounce}.", f"are {anounce}.")
+            self.announce_cooldown(counter, is_set=True, is_new=is_new, announce=announce)
             return True
         return False
 
-    def _dec(self, counters, counter, anounce=None):
+    def _dec(self, counters, counter, announce=None):
         value = counters.get(counter, None)
         if value is not None and value > 0:
             counters[counter] = value - 1
             return False
         else:
             if value is not None:
+                self.announce_cooldown(counter, is_set=False, announce=announce)  # first announce, then delete
                 del counters[counter]
-                if anounce:
-                    self.anounce(f"is {anounce}.", f"are {anounce}.")
             return True
 
-    def set_cooldown(self, counter, value, anounce=None):
-        return self._set(self.actor.cooldown, counter, value, anounce)
+    def set_cooldown(self, counter, value, announce=None):
+        return self._set(self.actor.cooldown, counter, value, announce)
 
     def dec_cooldowns(self):
         for counter in set(self.actor.cooldown):
@@ -46,9 +65,11 @@ class StateMutator(object):
 
 class ActorMutator(StateMutator):
     default_wear = None
+    cooldown_announce = {
+        'high': {True: "high", False: "not high anymore"}}
 
     def __init__(self, actor, world):
-        super(ActorMutator, self).__init__(actor)
+        super().__init__(actor)
         self.world = world
 
     @property
@@ -59,18 +80,18 @@ class ActorMutator(StateMutator):
     def others(self):
         return (a for a in self.location.actors if a is not self.actor)
 
-    def set_counter(self, counter, value, anounce=None):
-        return self._set(self.actor.counters, counter, value, anounce)
+    def set_counter(self, counter, value, announce=None):
+        return self._set(self.actor.counters, counter, value, announce)
 
-    def dec_counter(self, counter, anounce=None):
-        return self._dec(self.actor.counters, counter, anounce)
+    def dec_counter(self, counter, announce=None):
+        return self._dec(self.actor.counters, counter, announce)
 
     def is_(self, doing):
         return doing in self.actor.counters
 
-    def anounce(self, message, reflect=None):
+    def announce(self, message, reflect=None):
         self.location.broadcast(f"{self.actor.Name} {message}", skip_sender=self.actor)
-        if reflect:
+        if reflect and self.actor.recieves_announces:
             self.actor.send(f"You {reflect}")
 
     def say_to(self, actor, message):
@@ -85,11 +106,11 @@ class ActorMutator(StateMutator):
             self.victim = None
             self.actor.location = location
             self.location.actors.add(self.actor)
-            self.anounce('materializes.')
+            self.announce('materializes.')
 
     def die(self):
         if self.actor.alive:
-            self.anounce('dies.', 'die.')
+            self.announce('dies.', 'die.')
             self._relocate_to_slot('wields', None)
             self._relocate_to_slot('wears', None)
             self.drop(self.actor.bag)
@@ -107,10 +128,10 @@ class ActorMutator(StateMutator):
                     and not actor.get_mutator(self.world).allow(self.actor, new)):
                 return False
 
-        self.anounce('leaves to %s.' % new.name)
+        self.announce('leaves to %s.' % new.name)
         self.location.actors.remove(self.actor)
         self.actor.location = new
-        self.anounce('arrives from %s.' % old.name)
+        self.announce('arrives from %s.' % old.name)
         self.location.actors.add(self.actor)
         self.deteriorate(self.actor.wears)
         return True
@@ -128,27 +149,27 @@ class ActorMutator(StateMutator):
             source.difference_update(items)
         return FilterSet(items)
 
-    def pick(self, item_or_items, anounce=None):
+    def pick(self, item_or_items, announce=None):
         items = self._relocate(item_or_items, self.location.items, self.actor.bag)
         if items:
             items_str = pretty_list(items)
-            self.anounce(f'picks up {items_str}.', anounce and anounce(items_str))
+            self.announce(f'picks up {items_str}.', announce and announce(items_str))
         return items
 
     def drop(self, item_or_items):
         items = self._relocate(item_or_items, self.actor.bag, self.location.items)
         if items:
             items_str = pretty_list(items)
-            self.anounce(f'drops {items_str} on the ground.', f'drop {items_str} on the ground.')
+            self.announce(f'drops {items_str} on the ground.', f'drop {items_str} on the ground.')
         return items
 
     def eat(self, item_or_items):
         items = self._relocate(item_or_items, self.actor.bag)
         if items:
             items_str = pretty_list(items)
-            self.anounce(f'eats {items_str}.', f'eat {items_str}.')
+            self.announce(f'eats {items_str}.', f'eat {items_str}.')
         if any(items.filter(Mushroom)):
-            self.set_counter('high', 5, anounce='high')
+            self.set_cooldown('high', 5)
         return items
 
     def _relocate_to_slot(self, slot, item):
@@ -167,26 +188,26 @@ class ActorMutator(StateMutator):
 
     def wear(self, item):
         if isinstance(item, Wearables) and self._relocate_to_slot('wears', item):
-            self.anounce(f'wears {item.name}.', f'wear {item.name}.')
+            self.announce(f'wears {item.name}.', f'wear {item.name}.')
             return item
 
     def wield(self, item):
         if isinstance(item, Wieldables) and self._relocate_to_slot('wields', item):
-            self.anounce(f'wields {item.name}.', f'wield {item.name}.')
+            self.announce(f'wields {item.name}.', f'wield {item.name}.')
             return item
 
-    def unequip(self, anounce=None):
+    def unequip(self, announce=None):
         item = self.actor.wields
         if item:
-            self.anounce(f'puts away {item.name}.', anounce and anounce(item))
+            self.announce(f'puts away {item.name}.', announce and announce(item))
             self._relocate_to_slot('wields', None)
             return item
 
     def barter(self, counterparty, what, for_what):
         if (counterparty.barters
                 and counterparty.get_mutator(self.world).accept_barter(self.actor, what, for_what)):
-            anounce = f"{pretty_list(what)} for {pretty_list(for_what)} with {counterparty.name}"
-            self.anounce(f'barters {anounce}.', f'barter {anounce}.')
+            announce = f"{pretty_list(what)} for {pretty_list(for_what)} with {counterparty.name}"
+            self.announce(f'barters {announce}.', f'barter {announce}.')
 
     def accept_barter(self, counterparty, what, for_what):
         return (
@@ -197,8 +218,8 @@ class ActorMutator(StateMutator):
         if self._relocate(what, source, destination):
             self.actor.credits -= price
             counterparty.credits += price
-            anounce = f"{pretty_list(what)} {prep} {counterparty.name}"
-            self.anounce(f'{verb}s {anounce}.', f'{verb} {anounce} for {credits(abs(price))}.')
+            announce = f"{pretty_list(what)} {prep} {counterparty.name}"
+            self.announce(f'{verb}s {announce}.', f'{verb} {announce} for {credits(abs(price))}.')
 
     def buy(self, counterparty, what):
         if counterparty.sells:
@@ -271,7 +292,7 @@ class ActorMutator(StateMutator):
             self.unequip()
 
         self.set_cooldown('produce', 1)
-        self.anounce('%ss %s.' % (means.verb, pretty_list(fruits)))
+        self.announce('%ss %s.' % (means.verb, pretty_list(fruits)))
         self.actor.bag.update(fruits)
 
         return fruits
@@ -303,11 +324,11 @@ class ActorMutator(StateMutator):
 
         return True
 
-    def attack(self, victim, anounce=None):
+    def attack(self, victim, announce=None):
         self.actor.victim = victim
         if victim.victim is None:
             victim.victim = self.actor
-        self.anounce(f'attacks {victim.name}.', anounce)
+        self.announce(f'attacks {victim.name}.', announce)
 
     def cleanup_victims(self):
         victim = self.actor.victim
@@ -331,18 +352,14 @@ class ActorMutator(StateMutator):
         if victim.max_hitpoints:
             victim.hitpoints -= method.damage
 
-        if self.actor.is_weapon_method(method):
-            self.anounce(f'{method.verb_s} {victim.name} with {self.actor.weapon.name}.',
-                         f'{method} {victim.name} with {self.actor.weapon.name}.')
+        if method.is_weapon_method:
+            self.announce(f'{method.verb_s} {victim.name} with {self.actor.weapon.name}.',
+                          f'{method} {victim.name} with {self.actor.weapon.name}.')
         else:
-            self.anounce(f'{method.verb_s} {victim.name}.', f'{method} {victim.name}.')
+            self.announce(f'{method.verb_s} {victim.name}.', f'{method} {victim.name}.')
 
         self.set_cooldown(method.verb, method.cooldown_time)
         return True
-
-    def act(self):
-        super(ActorMutator, self).act()
-        self.dec_counter('high', anounce="not high anymore.")  # should be a cooldown as well
 
     def purge(self):
         if self.actor.max_hitpoints and self.actor.hitpoints < 0:

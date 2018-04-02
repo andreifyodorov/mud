@@ -115,14 +115,14 @@ def migrate_6(storage):
 
 
 @version
-def migrate_6_1(storage):
+def migrate_7(storage):
     for player in storage.all_players():
-        if player.last_command_time is None:
+        if hasattr(player, "last_command_time") and player.last_command_time is None:
             player.last_command_time = storage.world.time
 
 
 @version
-def migrate_6_2(storage):
+def migrate_8(storage):
     for player in storage.all_players():
         time = storage.world.time
         mutator = player.get_mutator(storage.world)

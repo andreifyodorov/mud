@@ -119,8 +119,16 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('#me')
         self.assertReplyContains('Test Player')
 
-    def test_02_field(self):
+    def test_020_sleep(self):
         self.send('#start')
+
+        self.cycle(
+            self.chatflow.act,
+            lambda: not self.player.recieves_announces,
+            "Player didn't fall asleep")
+
+    def test_022_field(self):
+        self.send("#where")
         self.assertReplyContains('#farm')
 
         self.send('#farm')
@@ -301,6 +309,16 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('#pick')
         self.assertReplyContains('mushroom')
         self.assertTrue(any(self.player.bag.filter(Mushroom)))
+
+        self.send('#eat')
+        self.send(self.get_option('mushroom'))
+        self.assertReplyContains('high')
+        self.assertTrue(self.player.is_high)
+
+        self.cycle(
+            self.chatflow.act,
+            lambda: not self.player.is_high,
+            "Player didn't sober up")
 
 
 def load_tests(loader, tests, pattern):

@@ -208,12 +208,15 @@ class ConfirmationHandler(InputHandler):
             return False
 
 
-class UnknownChatflowCommand(Exception):
-    pass
-
-
 class Chatflow(ActorMutator, HumanAttacks):
+
+    class UnknownChatflowCommand(Exception):
+        pass
+
     default_wear = DirtyRags
+    cooldown_announce = {
+        'active': {False: ("falls asleep.", "fall asleep."), 1: ("wakes up.", "wake up.")}
+    }
 
     def __init__(self, actor, world, cmd_pfx=None):
         super(Chatflow, self).__init__(actor, world)
@@ -229,7 +232,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                 try:
                     result = self.dispatch(command, *args)
                     self.reply(result)
-                except UnknownChatflowCommand:
+                except self.UnknownChatflowCommand:
                     if 'answered' not in self.actor.input:
                         self.reply("Unknown command. Send %shelp for the list of commands"
                                    % self.cmd_pfx)
@@ -255,7 +258,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             if cmd == command:
                 self.wakeup()
                 return handler(*args, **kwargs)
-        raise UnknownChatflowCommand
+        raise self.UnknownChatflowCommand
 
     def reply(self, result):
         if isinstance(result, FilterSet):  # some methods return them
@@ -551,10 +554,10 @@ class Chatflow(ActorMutator, HumanAttacks):
 
     def pick(self, item_or_items):
         super(Chatflow, self).pick(
-            item_or_items, anounce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
+            item_or_items, announce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
 
     def unequip(self):
-        super(Chatflow, self).unequip(anounce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
+        super(Chatflow, self).unequip(announce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
 
     def bag(self):
         actions = ['drop']
@@ -593,20 +596,13 @@ class Chatflow(ActorMutator, HumanAttacks):
         if super(Chatflow, self).deteriorate(commodity):
             self.actor.send(commodity.deteriorate('Your'))
 
-    def sleep(self):
-        if not self.actor.asleep:
-            self.actor.asleep = True
-            self.anounce("falls asleep.", "fall asleep.")
-
-    def wakeup(self):  # called from dispatch
-        self.set_counter('active', 20)
-        if self.actor.asleep:
-            self.actor.asleep = False
-            self.anounce("wakes up.", "wake up.")
+    def wakeup(self, announce=None):  # called from dispatch
+        if self.actor.alive:
+            self.set_cooldown('active', 20, announce)
 
     def spawn(self, location):
-        super(Chatflow, self).spawn(location)
-        self.wakeup()
+        super().spawn(location)
+        self.wakeup(announce=False)
 
     def attack(self, whom):
         methods = self.attack_methods()
@@ -614,11 +610,6 @@ class Chatflow(ActorMutator, HumanAttacks):
         methods = (f"{self.cmd_pfx}{m}" for m in methods)
         attacks_sentence = list_sentence(methods, glue="or")
         super(Chatflow, self).attack(whom, f'attack {whom.name}. You can {attacks_sentence}.')
-
-    def act(self):
-        super(Chatflow, self).act()
-        if self.actor.alive and self.dec_counter('active'):
-            self.sleep()
 
 
 class PlayerState(ActorState):
@@ -630,10 +621,13 @@ class PlayerState(ActorState):
         return Chatflow(self, world, self.cmd_pfx)
 
     def __init__(self, send_callback, cmd_pfx):
-        super(PlayerState, self).__init__()
+        super().__init__()
         self.send = send_callback or (lambda message: None)
         self.cmd_pfx = cmd_pfx
-        self.asleep = False
         self.last_location = None
         self.input = {}
         self.chain = {}
+
+    @property
+    def recieves_announces(self):
+        return self.alive and 'active' in self.cooldown

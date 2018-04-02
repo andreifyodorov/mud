@@ -6,6 +6,9 @@ class State(object):
     icon = None
     abstract_name = None
 
+    def __init__(self):
+        self.cooldown = {}
+
     @property
     def name_without_icon(self):
         return self.abstract_name
@@ -31,14 +34,13 @@ class ActorState(State):
     barters = False
     sells = False
     buys = False
-    asleep = False
+    recieves_announces = False
     max_hitpoints = None
 
     def __init__(self, name=None):
         super(ActorState, self).__init__()
         self.name = name
         self.counters = {}
-        self.cooldown = {}
         self.alive = False
         self.location = None
         self.bag = FilterSet()
@@ -72,12 +74,6 @@ class ActorState(State):
     def weapon(self):
         return self.wields if self.wields and isinstance(self.wields, commodities.Weapon) else None
 
-    def is_weapon_method(self, method):
-        w = self.weapon
-        return w and w.attack is method
-
-    def send(self, msg):
-        pass
-
-    def attack(self):
-        pass
+    @property
+    def is_high(self):
+        return 'high' in self.cooldown
