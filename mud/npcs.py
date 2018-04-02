@@ -189,6 +189,12 @@ class MerchantState(NpcState):
 class RatMutator(NpcMutator, OrganicAttacks):
     organic_attacks = {Bite}
 
+    def ai(self):
+        if (self.actor.location is not Field):
+            direction = next(d for d, e in self.actor.location.exits.items() if e["location"] is Field)
+            if self.is_done("walking", "going to a field", 5):
+                self.go(direction)
+
 
 class RatState(NpcState):
     mutator_class = RatMutator

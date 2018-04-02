@@ -473,7 +473,7 @@ class Chatflow(ActorMutator, HumanAttacks):
         elif len(self.location.items) > 1:
             items_sentence = pretty_list(self.location.items)
             yield f"On the ground you see {items_sentence}. " \
-                  "You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
+                  f"You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
 
         others = FilterSet(self.others)
         if others:
@@ -519,8 +519,7 @@ class Chatflow(ActorMutator, HumanAttacks):
 
             dict(arg='what',
                  bag=self.actor.bag,
-                 prompt="what to barter off")
-        )
+                 prompt="what to barter off"))
 
     def get_sell_chain(self):
         return self.choice_chain(
@@ -534,8 +533,7 @@ class Chatflow(ActorMutator, HumanAttacks):
 
             dict(arg="what",
                  bag=self.actor.bag,
-                 prompt="what to sell")
-        )
+                 prompt="what to sell"))
 
     def get_buy_chain(self):
         return self.choice_chain(
@@ -549,8 +547,7 @@ class Chatflow(ActorMutator, HumanAttacks):
 
             dict(arg="what",
                  bag=lambda counterparty: counterparty.for_sale,
-                 prompt="what to buy")
-        )
+                 prompt="what to buy"))
 
     def go(self, direction):
         if super(Chatflow, self).go(direction):

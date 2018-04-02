@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # peasant.name = 'Jack'
     # peasant.get_mutator(storage.world).spawn(Field)
 
-    storage.world[Field.id].items.update([Vegetable()])
+    storage.world[Field.id].items.update([Vegetable(), Spindle()])
 
     s = '/where'
     # s = '/start'

@@ -1,4 +1,6 @@
-from .locations import Location, Field, Forests
+from itertools import chain
+
+from .locations import Location, Field, Woods, Forests
 from .commodities import Commodity, Mushroom
 from .npcs import NpcState, RatState
 from .utils import FilterSet
@@ -50,8 +52,9 @@ class WorldState(dict):
             self.spawn(Mushroom, choice(list(Forests.values())))
 
         # rat
-        if not any(self[Field.id].actors.filter(RatState)):
-            self.spawn(RatState, Field)
+        rat_locations = set(chain([Field], Woods.values()))
+        if not any(chain.from_iterable(self[loc.id].actors.filter(RatState) for loc in rat_locations)):
+            self.spawn(RatState, choice(list(Woods.values())))
 
         self.time += 1
 
