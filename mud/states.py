@@ -69,6 +69,14 @@ class ActorState(State):
         else:
             return self.name
 
+    def get_doing_descr(self, perspective=None):
+        if self.victim:
+            return f"attacking you" if self.victim is perspective else f"attacking {self.victim.name}"
+
+    def get_full_descr(self, perspective=None):
+        doing_descr = self.get_doing_descr(perspective)
+        return f"{self.descr} {doing_descr}" if doing_descr else self.descr
+
     @property
     def weapon(self):
         return self.wields if self.wields and isinstance(self.wields, commodities.Weapon) else None

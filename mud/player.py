@@ -215,7 +215,7 @@ class Chatflow(ActorMutator, HumanAttacks):
 
     default_wear = DirtyRags
     cooldown_announce = {
-        'active': {False: ("falls asleep.", "fall asleep."), 1: ("wakes up.", "wake up.")}
+        'active': {False: ("falls asleep.", "fall asleep."), 'first': ("wakes up.", "wake up.")}
     }
 
     def __init__(self, actor, world, cmd_pfx=None):
@@ -427,7 +427,7 @@ class Chatflow(ActorMutator, HumanAttacks):
 
     def look(self, actor):  # TODO: add if actor barters / buys / sells
         if actor == self.actor:
-            descr = f"You are {actor.descr}."
+            descr = f"You are {actor.get_full_descr(actor)}."
             if actor.alive:
                 yield descr
             else:
@@ -438,15 +438,70 @@ class Chatflow(ActorMutator, HumanAttacks):
             if actor.wears:
                 yield "You wear %s." % actor.wears.descr
             else:
-                yield "You are naked."
+                yield "You are naked."  # shouldn't ever be the case
             if actor.wields:
                 yield "You wield %s. You can %sunequip it." % (actor.wields.descr, self.cmd_pfx)
         else:
-            yield "You see %s." % actor.descr
+            yield f"You see {actor.get_full_descr(self.actor)}."
             if actor.wears:
                 yield "%s wears %s." % (actor.Name, actor.wears.descr)
             if actor.wields:
                 yield "%s wields %s." % (actor.Name, actor.wields.descr)
+
+    def where(self, verb=None):
+        actor = self.actor
+        location = actor.location
+        last_location = actor.last_location
+
+        if not verb:
+            verb = ("are still" if last_location and location.descr == last_location.descr
+                    else "are")
+
+        actor.last_location = location
+        yield f"You {verb} {location.descr}"
+
+        for means in self.location.means:
+            yield means.descr % (self.cmd_pfx + means.verb)
+
+        for descr, directions in location.get_exit_groups():
+            directions = (self.cmd_pfx + d for d in directions)
+            yield descr % list_sentence(directions)
+
+        if len(self.location.items) == 1:
+            for item in self.location.items:
+                yield f"On the ground you see {item.name}. You can {self.cmd_pfx}pick it up."
+        elif len(self.location.items) > 1:
+            items_sentence = pretty_list(self.location.items)
+            yield f"On the ground you see {items_sentence}. " \
+                  "You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
+
+        others = FilterSet(self.others)
+        if others:
+            if len(others) > 1:
+                yield "You see:"
+                actor_groups = (others.filter(cls) for cls in (NpcState, PlayerState))
+                for actor_group in actor_groups:
+                    for actor in sorted(actor_group, key=lambda a: (type(a).__name__, a.name)):
+                        yield f"  • {actor.get_full_descr(self.actor)}"
+            else:
+                for actor in others:
+                    yield f"You see {actor.get_full_descr(self.actor)}."
+
+            actions = [f'take a closer {self.cmd_pfx}look at them']
+
+            if any(a.barters for a in others):
+                actions.append(f'{self.cmd_pfx}barter')
+
+            if any(a.sells for a in others):
+                actions.append(f'{self.cmd_pfx}buy')
+
+            if any(a.buys for a in others):
+                actions.append(f'{self.cmd_pfx}sell')
+
+            actions.append(f'{self.cmd_pfx}attack')
+
+            actions_sentence = list_sentence(actions, glue="or")
+            yield f"You can {actions_sentence}."
 
     def get_barter_chain(self):
         return self.choice_chain(
@@ -496,57 +551,6 @@ class Chatflow(ActorMutator, HumanAttacks):
                  bag=lambda counterparty: counterparty.for_sale,
                  prompt="what to buy")
         )
-
-    def where(self, verb=None):
-        actor = self.actor
-        location = actor.location
-        last_location = actor.last_location
-
-        if not verb:
-            verb = ("are still" if last_location and location.descr == last_location.descr
-                    else "are")
-
-        actor.last_location = location
-        yield 'You %s %s' % (verb, location.descr)
-
-        for means in self.location.means:
-            yield means.descr % (self.cmd_pfx + means.verb)
-
-        for descr, directions in location.get_exit_groups():
-            directions = (self.cmd_pfx + d for d in directions)
-            yield descr % list_sentence(directions)
-
-        if len(self.location.items) == 1:
-            for item in self.location.items:
-                yield "On the ground you see %s. You can %spick it up." \
-                      % (item.name, self.cmd_pfx)
-        elif len(self.location.items) > 1:
-            yield "On the ground you see {items}. You can {0}pick or {0}collect them all." \
-                  .format(self.cmd_pfx, items=pretty_list(self.location.items))
-
-        others = FilterSet(self.others)
-        if others:
-            if len(others) > 1:
-                yield "You see:"
-                actor_groups = (others.filter(cls) for cls in (NpcState, PlayerState))
-                for actor_group in actor_groups:
-                    for actor in sorted(actor_group, key=lambda a: (type(a).__name__, a.name)):
-                        yield "  • %s" % actor.descr
-            else:
-                for actor in others:
-                    yield "You see %s." % actor.descr
-
-            actions = [f'take a closer {self.cmd_pfx}look at them']
-            if any(a.barters for a in others):
-                actions.append(f'{self.cmd_pfx}barter')
-            if any(a.sells for a in others):
-                actions.append(f'{self.cmd_pfx}buy')
-            if any(a.buys for a in others):
-                actions.append(f'{self.cmd_pfx}sell')
-            actions.append(f'{self.cmd_pfx}attack')
-
-            actions_sentence = list_sentence(actions, glue="or")
-            yield f"You can {actions_sentence}."
 
     def go(self, direction):
         if super(Chatflow, self).go(direction):
@@ -606,7 +610,7 @@ class Chatflow(ActorMutator, HumanAttacks):
 
     def attack(self, whom):
         methods = self.attack_methods()
-        methods = (f"{m} with {self.actor.weapon.name}" if self.actor.is_weapon_method(m) else m for m in methods)
+        methods = (f"{m} with {self.actor.weapon.name}" if m.is_weapon_method else m for m in methods)
         methods = (f"{self.cmd_pfx}{m}" for m in methods)
         attacks_sentence = list_sentence(methods, glue="or")
         super(Chatflow, self).attack(whom, f'attack {whom.name}. You can {attacks_sentence}.')

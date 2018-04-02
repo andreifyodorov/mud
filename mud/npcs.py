@@ -55,17 +55,14 @@ class NpcState(ActorState):
     mutator_class = None
 
     def __init__(self, name=None):
-        super(NpcState, self).__init__(name)
+        super().__init__(name)
         self.counters = {}
         self.doing_descr = None
         self.accumulate = False
 
-    @property
-    def descr(self):
-        descr = super(NpcState, self).descr
-        if self.doing_descr:
-            descr = '%s %s' % (descr, self.doing_descr)
-        return descr
+    def get_doing_descr(self, perspective=None):
+        super_doing_descr = super().get_doing_descr(perspective)
+        return super_doing_descr if super_doing_descr else self.doing_descr
 
     def get_mutator(self, world):
         if self.mutator_class is None:

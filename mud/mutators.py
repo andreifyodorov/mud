@@ -20,7 +20,7 @@ class StateMutator(object):
                     continue
                 if counter in cls.cooldown_announce:
                     announces = cls.cooldown_announce[counter]
-                    key = 1 if is_set and is_new and 1 in announces else is_set
+                    key = 'first' if is_set and is_new and 'first' in announces else is_set
                     announce = announces.get(key)
                     break
 
@@ -32,8 +32,8 @@ class StateMutator(object):
 
     def _set(self, counters, counter, value, announce=None):
         if value > 0:
-            is_new = counter in counters  # first change, then announce
-            counters[counter] = value - 1
+            is_new = counter not in counters
+            counters[counter] = value - 1  # first change, then announce (wake up)
             self.announce_cooldown(counter, is_set=True, is_new=is_new, announce=announce)
             return True
         return False
@@ -45,7 +45,7 @@ class StateMutator(object):
             return False
         else:
             if value is not None:
-                self.announce_cooldown(counter, is_set=False, announce=announce)  # first announce, then delete
+                self.announce_cooldown(counter, is_set=False, announce=announce)  # first announce, then delete (sleep)
                 del counters[counter]
             return True
 
