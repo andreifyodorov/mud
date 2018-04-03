@@ -4,6 +4,7 @@ from os import getenv, uname
 CERT = '/usr/local/etc/nginx/cert.pem'
 WEBHOOK_HOST = 'webhooks.bakunin.nl/mud'
 REDIS = {'host': 'localhost', 'port': 6379}
+CYCLE_SECONDS = 60
 
 if getenv('IS_PLAYGROUND') or uname()[0] == "Darwin":
     IS_PLAYGROUND = True

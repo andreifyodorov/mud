@@ -38,13 +38,17 @@ class WorldState(dict):
     def enact(self):
         self.time = self.time or 0
 
-        # enact actors
         # actors can change location so take a set
         mutators = set(a.get_mutator(self) for a in self.actors())
+        # enact actors
         for mutator in mutators:
             mutator.act()
+        # remove dead
         for mutator in mutators:
             mutator.purge()
+        # update victims
+        for mutator in mutators:
+            mutator.cleanup_victims()
 
         # mushrooms
         mushrooms = list(c for l in Forests.values() for c in self[l.id].items.filter(Mushroom))
@@ -65,8 +69,8 @@ class LocationState(object):
         self.actors = FilterSet()
         self.means = FilterSet()
 
-    def broadcast(self, message, skip_sender=None):
+    def broadcast(self, message, skip_senders=None):
         for actor in self.actors:
-            if skip_sender is not None and actor is skip_sender or not actor.recieves_announces:
+            if skip_senders and actor in skip_senders or not actor.recieves_announces:
                 continue
             actor.send(message)

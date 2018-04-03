@@ -61,11 +61,11 @@ def condition(usage, max_usage):
     >>> condition(2, 5)
     'used'
     >>> condition(3, 5)
-    'worn out'
+    'well-used'
     >>> condition(4, 5)
     'falling apart'
     """
-    index = int(round(float(usage) / (max_usage - 1) * (len(conditions) + 1))) - 2
+    index = int(round(usage / (max_usage - 1) * (len(conditions) + 1))) - 2
     return conditions[index] if index >= 0 else str()
 
 
@@ -97,43 +97,45 @@ class Deteriorates(object):
     def descr(self):
         return self.name_with_condition
 
-    def deteriorate(self, owner):
+    @property
+    def deteriorate(self):
         """
-        >>> Spindle().deteriorate('His')
-        'His spindle disintegrates.'
+        >>> Spindle().deteriorate
+        'spindle disintegrates.'
 
-        >>> RoughspunTunic().deteriorate('Her')
-        'Her old roughspun tunic turns into dirty rags.'
+        >>> RoughspunTunic().deteriorate
+        'old roughspun tunic turns into dirty rags.'
 
         >>> Test = type('Test', (Commodity, Deteriorates), dict(abstract_name='object'))
-        >>> Test().deteriorate('Our')
-        'Object disintegrates.'
+        >>> Test().deteriorate
+        'object disintegrates.'
 
         >>> Foobar = type('Foobar', (Commodity, Deteriorates),
         ...               dict(abstract_name='foobar', deteriorates_into=Test))
-        >>> Foobar().deteriorate('Our')
-        'Foobar deteriorates into object.'
+        >>> Foobar().deteriorate
+        'foobar deteriorates into object.'
 
         """
 
         if hasattr(self, 'deteriorates_into'):
             into = self.deteriorates_into.abstract_name
             if hasattr(self, 'deteriorate_message'):
-                return self.deteriorate_message % (owner, into)
+                return self.deteriorate_message % into
             else:
-                return "%s deteriorates into %s." % (self.Name, into)
+                return f"{self.name} deteriorates into {into}."
         else:
             if hasattr(self, 'deteriorate_message'):
-                return self.deteriorate_message % owner
+                return self.deteriorate_message
             else:
-                return "%s disintegrates." % self.Name
+                return f"{self.name} disintegrates."
 
 
 class Spindle(Deteriorates, Commodity, Wieldables):
+    icon = '🍢'
     max_usages = 3
     abstract_name = 'a%s spindle'
     abstract_plural = '%d%s spindles'
-    deteriorate_message = '%s spindle disintegrates.'
+    deteriorate_message = 'spindle disintegrates.'
 
 
 class Weapon(object):
@@ -144,7 +146,7 @@ class Shovel(Deteriorates, Commodity, Wieldables, Weapon):
     max_usages = 5
     abstract_name = 'a%s shovel'
     abstract_plural = '%d%s shovels'
-    deteriorate_message = '%s shovel falls apart.'
+    deteriorate_message = 'shovel falls apart.'
     attack = Bash
 
 
@@ -164,7 +166,7 @@ class RoughspunTunic(Deteriorates, Commodity, Wearables):
     abstract_plural = '%d%s roughspun tunics'
     max_usages = 50
     deteriorates_into = DirtyRags
-    deteriorate_message = '%s old roughspun tunic turns into %s.'
+    deteriorate_message = 'old roughspun tunic turns into %s.'
 
 
 class Overcoat(Commodity, Wearables):

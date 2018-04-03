@@ -234,8 +234,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                     self.reply(result)
                 except self.UnknownChatflowCommand:
                     if 'answered' not in self.actor.input:
-                        self.reply("Unknown command. Send %shelp for the list of commands"
-                                   % self.cmd_pfx)
+                        self.reply(f"Unknown command. Send {self.cmd_pfx}help for the list of commands.")
                 else:
                     if 'answered' in self.actor.input:
                         self.actor.input.clear()
@@ -427,12 +426,15 @@ class Chatflow(ActorMutator, HumanAttacks):
 
     def look(self, actor):  # TODO: add if actor barters / buys / sells
         if actor == self.actor:
-            descr = f"You are {actor.get_full_descr(actor)}."
-            if actor.alive:
+            descr = f"You are {actor.descr}."
+            if self.actor.alive:
                 yield descr
             else:
-                yield "%s You can change your %sname." % (descr, self.cmd_pfx)
-                yield "You are dead."
+                yield f"{descr} You can change your {self.cmd_pfx}name."
+            doing_descr = actor.get_doing_descr()
+            if doing_descr:
+                yield f"You are {doing_descr}."
+            if not actor.alive:
                 return
             yield "In your bag you have %s." % pretty_list(actor.bag)
             if actor.wears:
@@ -593,10 +595,6 @@ class Chatflow(ActorMutator, HumanAttacks):
         return "You %s %s. You put %s into your %sbag." \
                % (means.verb, pretty_list(fruits), pronoun, self.cmd_pfx)
 
-    def deteriorate(self, commodity):
-        if super(Chatflow, self).deteriorate(commodity):
-            self.actor.send(commodity.deteriorate('Your'))
-
     def wakeup(self, announce=None):  # called from dispatch
         if self.actor.alive:
             self.set_cooldown('active', 20, announce)
@@ -628,6 +626,7 @@ class PlayerState(ActorState):
         self.last_location = None
         self.input = {}
         self.chain = {}
+        self.counters = {}  # TODO: remove after migrating to v. 9
 
     @property
     def recieves_announces(self):

@@ -125,20 +125,43 @@ def migrate_7(storage):
 def migrate_8(storage):
     for player in storage.all_players():
         time = storage.world.time
-        mutator = player.get_mutator(storage.world)
 
         if hasattr(player, "last_command_time"):
             last_time = player.last_command_time
-            distance = 20 if not last_time else 21 - time + last_time
-            if distance <= 20:
-                mutator.set_counter("active", distance)
+            distance = 20 if not last_time else 20 - time + last_time
+            if 0 < distance <= 20:
+                player.counters["active"] = distance - 1
             player.last_command_time = None
 
         if hasattr(player, "last_success_time"):
             last_time = player.last_success_time
             if player.last_success_time == time:
-                mutator.set_counter("cooldown", 1)
+                player.counters["cooldown"] = 0
             player.last_success_time = None
+
+
+@version
+def migrate_9(storage):
+    for player in storage.all_players():
+        if "active" in player.counters:
+            player.cooldown["active"] = player.counters["active"]
+        if "cooldown" in player.counters:
+            player.cooldown["produce"] = player.counters["cooldown"]
+        del player.counters
+
+    for actor in storage.world.actors():
+        if isinstance(actor, PeasantState):
+            for key in ("tired", "hungry"):
+                if key in actor.counters:
+                    actor.cooldown[key] = actor.counters[key]
+                    del actor.counters[key]
+
+
+@version
+def migrate_10(storage):
+    for actor in storage.world.actors():
+        if actor.max_hitpoints and actor.alive:
+            actor.hitpoints = actor.max_hitpoints
 
 
 def dry_send_callback_factory(chatkey):

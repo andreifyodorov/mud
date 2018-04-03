@@ -11,7 +11,7 @@ class Attack:
 
 
 Punch = Attack('punch', 'punches', damage=1, cooldown_time=1)
-Bite = Attack('bites', 'bites', damage=1, cooldown_time=1)
+Bite = Attack('bite', 'bites', damage=1, cooldown_time=1)
 Kick = Attack('kick', 'kicks', damage=1, cooldown_time=2)
 Bash = Attack('bash', 'bashes', damage=3, cooldown_time=2, is_weapon_method=True)
 

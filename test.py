@@ -8,7 +8,9 @@ from storage import Storage
 from migrate import migrations
 from mud.player import PlayerState, CommandPrefix
 from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, Shovel, DirtyRags, RoughspunTunic
-from mud.npcs import PeasantState
+from mud.npcs import PeasantState, RatState
+from mud.locations import Field
+from mud.attacks import Kick, Punch
 
 
 class MockSendMessage(object):
@@ -126,6 +128,14 @@ class ChatflowTestCase(unittest.TestCase):
             self.chatflow.act,
             lambda: not self.player.recieves_announces,
             "Player didn't fall asleep")
+
+        self.send("#where")
+        self.assertTrue(self.player.recieves_announces)
+
+        for _ in range(50):
+            self.send("#where")
+            self.chatflow.act()
+        self.assertTrue(self.player.recieves_announces)
 
     def test_022_field(self):
         self.send("#where")
@@ -319,6 +329,37 @@ class ChatflowTestCase(unittest.TestCase):
             self.chatflow.act,
             lambda: not self.player.is_high,
             "Player didn't sober up")
+
+    def test_10_rat(self):
+        self.chatflow._relocate_self(Field)
+        self.send("#attack")
+        self.send(self.get_option("rat"))
+
+        rat = self.player.victim
+        self.assertIs(type(rat), RatState)
+
+        had_hitpoints = rat.hitpoints
+        self.send(f"#{Kick}")
+        self.assertLess(rat.hitpoints, had_hitpoints)
+        self.assertTrue(self.chatflow.coolsdown(Kick.verb))
+
+        had_hitpoints = rat.hitpoints
+        self.send(f"#{Kick}")
+        self.assertEqual(rat.hitpoints, had_hitpoints)
+
+        self.send(f"#{Punch}")
+        self.assertLess(rat.hitpoints, had_hitpoints)
+
+        had_hitpoints = self.player.hitpoints
+        self.storage.world.enact()
+        self.assertReplyContains('rat bites you')
+        self.assertLess(self.player.hitpoints, had_hitpoints)
+
+        self.send(f"#{Punch}")
+        self.storage.world.enact()
+        self.assertReplyContains('rat dies')
+
+        self.assertIsNone(self.player.victim)
 
 
 def load_tests(loader, tests, pattern):

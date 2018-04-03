@@ -70,6 +70,8 @@ class ActorState(State):
             return self.name
 
     def get_doing_descr(self, perspective=None):
+        if not self.alive:
+            return "dead"
         if self.victim:
             return f"attacking you" if self.victim is perspective else f"attacking {self.victim.name}"
 

@@ -7,7 +7,7 @@ class StateMutator(object):
     def __init__(self, actor):
         self.actor = actor
 
-    def announce(self):
+    def announce(self, message):
         raise NotImplementedError
 
     def announce_cooldown(self, counter, is_set, is_new=False, announce=None):
@@ -80,13 +80,28 @@ class ActorMutator(StateMutator):
     def others(self):
         return (a for a in self.location.actors if a is not self.actor)
 
-    def announce(self, message, reflect=None):
-        self.location.broadcast(f"{self.actor.Name} {message}", skip_sender=self.actor)
+    def announce(self, message, reflect=None, objective=None, possessive=False):
+        skip_senders = {self.actor}
+        if not possessive:
+            you, them = "You", self.actor.Name
+        else:
+            you, them = "Your", f"{self.actor.Name}'s"
+        # reflect message is sent to the sender itself (e.g. "You attack rat")
         if reflect and self.actor.recieves_announces:
-            self.actor.send(f"You {reflect}")
+            if reflect is True:
+                reflect = message
+            self.actor.send(f"{you} {reflect}")
+        # objective message (if present) is sent to the target of announced action (e.g. "Rat attacks you")
+        if objective:
+            objective, target_actor = objective
+            if target_actor.recieves_announces:
+                target_actor.send(f"{them} {objective}")
+            skip_senders.add(target_actor)
+        # the message itself is broadcast
+        self.location.broadcast(f"{them} {message}", skip_senders=skip_senders)
 
     def say_to(self, actor, message):
-        actor.send("*%s*: %s" % (self.actor.Name, message))
+        actor.send(f"*{self.actor.Name}*: {message}")
 
     def spawn(self, location):
         if not self.actor.location and not self.actor.alive:
@@ -107,22 +122,22 @@ class ActorMutator(StateMutator):
             self.drop(self.actor.bag)
             self.location.actors.remove(self.actor)
             self.actor.location = None
-            self.cleanup_victims()
             self.actor.alive = False
 
     def go(self, direction):
-        old = self.actor.location
-        new = self.actor.location.exits[direction]['location']
-
+        destination = self.actor.location.exits[direction]['location']
         for actor in self.location.actors:
             if (hasattr(actor.mutator_class, 'allow')
-                    and not actor.get_mutator(self.world).allow(self.actor, new)):
+                    and not actor.get_mutator(self.world).allow(self.actor, destination)):
                 return False
+        return self._relocate_self(destination)
 
-        self.announce('leaves to %s.' % new.name)
+    def _relocate_self(self, destination):
+        source = self.actor.location
+        self.announce('leaves to %s.' % destination.name)
         self.location.actors.remove(self.actor)
-        self.actor.location = new
-        self.announce('arrives from %s.' % old.name)
+        self.actor.location = destination
+        self.announce('arrives from %s.' % source.name)
         self.location.actors.add(self.actor)
         self.deteriorate(self.actor.wears)
         return True
@@ -311,7 +326,7 @@ class ActorMutator(StateMutator):
             if replace:
                 self.actor.bag.add(replace)
 
-        self.location.broadcast(commodity.deteriorate(f"{self.actor.name}'s"), skip_sender=self.actor)
+        self.announce(commodity.deteriorate, reflect=True, possessive=True)
 
         return True
 
@@ -321,33 +336,29 @@ class ActorMutator(StateMutator):
             victim.victim = self.actor
         self.announce(f'attacks {victim.name}.', announce)
 
-    def cleanup_victims(self):
-        victim = self.actor.victim
-        if victim and (not victim.alive or not self.actor.alive):
-            if victim.victim is self:
-                victim.victim = None
-            self.actor.victim = None
-            return True
-
     def kick(self, method):
         victim = self.actor.victim
         if not victim:
             return False
 
-        if self.cleanup_victims():
-            return True
-
-        if self.coolsdown(method):
+        if self.coolsdown(method.verb):
             return False
 
         if victim.max_hitpoints:
             victim.hitpoints -= method.damage
 
         if method.is_weapon_method:
+            weapon = self.actor.weapon
+            if weapon.attack is not method:
+                return False
             self.announce(f'{method.verb_s} {victim.name} with {self.actor.weapon.name}.',
-                          f'{method} {victim.name} with {self.actor.weapon.name}.')
+                          f'{method} {victim.name} with {self.actor.weapon.name}.',
+                          (f'{method.verb_s} you with {self.actor.weapon.name}.', victim))
+            self.deteriorate(weapon)
         else:
-            self.announce(f'{method.verb_s} {victim.name}.', f'{method} {victim.name}.')
+            self.announce(f'{method.verb_s} {victim.name}.',
+                          f'{method} {victim.name}.',
+                          (f'{method.verb_s} you.', victim))
 
         self.set_cooldown(method.verb, method.cooldown_time)
         return True
@@ -355,3 +366,10 @@ class ActorMutator(StateMutator):
     def purge(self):
         if self.actor.max_hitpoints and self.actor.hitpoints < 0:
             self.die()
+
+    def cleanup_victims(self):
+        victim = self.actor.victim
+        if victim and (not victim.alive or not self.actor.alive):
+            if victim.victim is self.actor:
+                victim.victim = None
+            self.actor.victim = None
