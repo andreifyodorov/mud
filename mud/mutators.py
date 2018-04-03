@@ -369,7 +369,10 @@ class ActorMutator(StateMutator):
 
     def cleanup_victims(self):
         victim = self.actor.victim
-        if victim and (not victim.alive or not self.actor.alive):
+        if victim and (
+                not victim.alive  # victim's dead
+                or not self.actor.alive  # actor's dead
+                or victim.location is not self.actor.location):  # someone ran away
             if victim.victim is self.actor:
                 victim.victim = None
             self.actor.victim = None

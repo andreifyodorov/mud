@@ -350,10 +350,20 @@ class ChatflowTestCase(unittest.TestCase):
         self.send(f"#{Punch}")
         self.assertLess(rat.hitpoints, had_hitpoints)
 
+        # escaping a location shouldn't prevent npc from kicking you till the end of current cycle
+        self.send("#south")
+
         had_hitpoints = self.player.hitpoints
         self.storage.world.enact()
         self.assertReplyContains('rat bites you')
         self.assertLess(self.player.hitpoints, had_hitpoints)
+
+        self.assertIsNone(self.player.victim)
+        self.assertIsNone(rat.victim)
+
+        self.send("#north")
+        self.send("#attack")
+        self.send(self.get_option("rat"))
 
         self.send(f"#{Punch}")
         self.storage.world.enact()
