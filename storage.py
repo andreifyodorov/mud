@@ -55,17 +55,18 @@ class Storage(object):
                 self.deserialize_state(self.world[location_id], eval(serialized))
 
     def get_player_state(self, chatkey):
+        chatkey = self.chatkey_type(chatkey)
         if chatkey in self.players:
             return self.players[chatkey]
 
         player = PlayerState(send_callback=self.send_callback_factory(chatkey), cmd_pfx=self.cmd_pfx)
+        self.chatkeys[player] = chatkey
+        self.players[chatkey] = player
 
         serialized = self.redis.get(self._player_key % chatkey)
         if serialized is not None:
             self.deserialize_state(player, eval(serialized))
 
-        self.chatkeys[player] = chatkey
-        self.players[chatkey] = player
         return player
 
     def get_entity_state(self, classname, arg):
@@ -193,4 +194,4 @@ class Storage(object):
     def all_players(self):
         keys = (key.split(b':', 1) for key in self.redis.keys(self._player_key % "*"))
         for prefix, chatkey in keys:
-            yield self.get_player_state(self.chatkey_type(chatkey))
+            yield self.get_player_state(chatkey)
