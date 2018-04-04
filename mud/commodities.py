@@ -131,7 +131,7 @@ class Deteriorates(object):
 
 
 class Spindle(Deteriorates, Commodity, Wieldables):
-    icon = '🍢'
+    icon = '🖊️'
     max_usages = 3
     abstract_name = 'a%s spindle'
     abstract_plural = '%d%s spindles'
