@@ -614,7 +614,6 @@ class Chatflow(ActorMutator, HumanAttacks):
 class PlayerState(ActorState):
     mutator_class = Chatflow
     definite_name = '(player)'
-    max_hitpoints = 5
 
     def get_mutator(self, world):
         return Chatflow(self, world, self.cmd_pfx)

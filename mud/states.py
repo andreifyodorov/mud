@@ -47,7 +47,7 @@ class ActorState(State):
         self.wears = None
         self.wields = None
         self.victim = None
-        self.hitpoints = None
+        self.hitpoints = 0
 
     @property
     def name_without_icon(self):
