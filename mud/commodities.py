@@ -1,5 +1,6 @@
 from .attacks import Bash
 from .states import State
+from .utils import condition
 
 
 class Commodity(State):
@@ -37,36 +38,9 @@ class Mushroom(Commodity, Edibles):
 
 
 class Cotton(Commodity):
+    icon = '☁️'
     abstract_name = 'cotton'
     abstract_plural = '%d balls of cotton'
-
-
-conditions = [
-    'slightly used',
-    'used',
-    'well-used',
-    'worn out',
-    'falling apart',
-]
-
-
-def condition(usage, max_usage):
-    """
-    >>> condition(1, 3)
-    'used'
-    >>> condition(2, 3)
-    'falling apart'
-    >>> condition(1, 5)
-    'slightly used'
-    >>> condition(2, 5)
-    'used'
-    >>> condition(3, 5)
-    'well-used'
-    >>> condition(4, 5)
-    'falling apart'
-    """
-    index = int(round(usage / (max_usage - 1) * (len(conditions) + 1))) - 2
-    return conditions[index] if index >= 0 else str()
 
 
 class Wieldables(ActionClasses):
@@ -74,12 +48,20 @@ class Wieldables(ActionClasses):
 
 
 class Deteriorates(object):
+    conditions = [
+        'slightly used',
+        'used',
+        'well-used',
+        'worn out',
+        'falling apart',
+    ]
+
     def __init__(self):
         self.usages = 0
 
     @property
     def condition(self):
-        s = condition(self.usages, self.max_usages)
+        s = condition(self.usages, self.max_usages, self.conditions)
         return ' %s' % s if s else s
 
     @property
@@ -131,7 +113,7 @@ class Deteriorates(object):
 
 
 class Spindle(Deteriorates, Commodity, Wieldables):
-    icon = '🖊️'
+    icon = '🌀'
     max_usages = 3
     abstract_name = 'a%s spindle'
     abstract_plural = '%d%s spindles'

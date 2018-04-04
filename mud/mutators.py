@@ -108,11 +108,12 @@ class ActorMutator(StateMutator):
             if self.default_wear:
                 self.actor.wears = self.default_wear()
             self.actor.alive = True
-            self.actor.hitpoints = self.actor.max_hitpoints
             self.victim = None
             self.actor.location = location
             self.location.actors.add(self.actor)
             self.announce('materializes.')
+            if self.actor.max_hitpoints:
+                self.actor.hitpoints = self.actor.max_hitpoints
 
     def die(self):
         if self.actor.alive:

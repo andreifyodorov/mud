@@ -1,6 +1,26 @@
 from itertools import groupby
 
 
+def condition(usage, max_usage, conditions):
+    """
+    >>> conditions = ['slightly used', 'used', 'well-used', 'worn out', 'falling apart']
+    >>> condition(1, 3, conditions)
+    'used'
+    >>> condition(2, 3, conditions)
+    'falling apart'
+    >>> condition(1, 5, conditions)
+    'slightly used'
+    >>> condition(2, 5, conditions)
+    'used'
+    >>> condition(3, 5, conditions)
+    'well-used'
+    >>> condition(4, 5, conditions)
+    'falling apart'
+    """
+    index = int(round(usage / (max_usage - 1) * (len(conditions) + 1))) - 2
+    return conditions[index] if index >= 0 else str()
+
+
 def credits(x):
     if not x:
         return "no credits"

@@ -157,11 +157,11 @@ def migrate_9(storage):
                     del actor.counters[key]
 
 
-@version
-def migrate_10(storage):
-    for actor in storage.world.actors():
-        if actor.max_hitpoints and actor.alive:
-            actor.hitpoints = actor.max_hitpoints
+# @version
+# def migrate_10(storage):
+#     for actor in storage.world.actors():
+#         if actor.max_hitpoints and actor.alive:
+#             actor.hitpoints = actor.max_hitpoints
 
 
 def dry_send_callback_factory(chatkey):

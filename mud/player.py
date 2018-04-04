@@ -336,8 +336,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                 lambda *args:
                     "There's no one here you can attack."
                     if not any(self.others)
-                    else self.choice('attack', self.attack, self.others,
-                                     prompt="whom to attack", skip_single=True)(*args))
+                    else self.choice('attack', self.attack, self.others, prompt="whom to attack")(*args))
 
             attacks = set(self.organic_attacks)
             attacks.update(cls.attack for cls in Weapon.__subclasses__())
