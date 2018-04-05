@@ -10,7 +10,7 @@ from mud.player import CommandPrefix
 from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, Shovel, DirtyRags, RoughspunTunic
 from mud.npcs import PeasantState, RatState
 from mud.locations import Field
-from mud.attacks import Kick, Punch
+from mud.attacks import Kick, Punch, Bash
 
 
 class MockSendMessage(object):
@@ -347,6 +347,10 @@ class ChatflowTestCase(unittest.TestCase):
 
         had_hitpoints = rat.hitpoints
         self.send(f"#{Kick}")
+        self.assertEqual(rat.hitpoints, had_hitpoints)
+
+        self.send("#unequip")
+        self.send(f"#{Bash}")
         self.assertEqual(rat.hitpoints, had_hitpoints)
 
         self.send(f"#{Punch}")

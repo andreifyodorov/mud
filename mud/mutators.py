@@ -345,13 +345,11 @@ class ActorMutator(StateMutator):
         if self.coolsdown(method.verb):
             return False
 
-        if victim.max_hitpoints:
-            victim.hitpoints -= method.damage
-
+        weapon = self.actor.weapon
         if method.is_weapon_method:
-            weapon = self.actor.weapon
-            if weapon.attack is not method:
+            if not weapon or weapon.attack is not method:
                 return False
+
             self.announce(f'{method.verb_s} {victim.name} with {self.actor.weapon.name}.',
                           f'{method} {victim.name} with {self.actor.weapon.name}.',
                           (f'{method.verb_s} you with {self.actor.weapon.name}.', victim))
@@ -360,6 +358,9 @@ class ActorMutator(StateMutator):
             self.announce(f'{method.verb_s} {victim.name}.',
                           f'{method} {victim.name}.',
                           (f'{method.verb_s} you.', victim))
+
+        if victim.max_hitpoints:
+            victim.hitpoints -= method.damage
 
         self.set_cooldown(method.verb, method.cooldown_time)
         return True

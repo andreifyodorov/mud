@@ -343,10 +343,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             for attack in attacks:
                 yield (
                     attack.verb,
-                    lambda:
-                        "You're not attacking anyone"
-                        if not self.actor.victim
-                        else f"You fail to {attack} {self.actor.victim.name}." if not self.kick(attack) else None)
+                    lambda: "You're not attacking anyone." if not self.actor.victim else self.kick(attack))
 
             nothing_there = 'There is nothing on the ground that you can pick up.',
             yield (
@@ -608,6 +605,14 @@ class Chatflow(ActorMutator, HumanAttacks):
         methods = (f"{self.cmd_pfx}{m}" for m in methods)
         attacks_sentence = list_sentence(methods, glue="or")
         super(Chatflow, self).attack(whom, f'attack {whom.name}. You can {attacks_sentence}.')
+
+    def kick(self, method):
+        weapon = self.actor.weapon
+        if method.is_weapon_method and (not weapon or weapon.attack is not method):
+            with_ = self.actor.wields.name if self.actor.wields else 'bare hands'
+            return f"You can't {method.verb} with {with_}."
+        if not super().kick(method):
+            return f"You fail to {method.verb} {self.actor.victim.name}."
 
 
 class PlayerState(ActorState):
