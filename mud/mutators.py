@@ -332,10 +332,18 @@ class ActorMutator(StateMutator):
         return True
 
     def attack(self, victim, announce=None):
-        self.actor.victim = victim
-        if victim.victim is None:
-            victim.victim = self.actor
-        self.announce(f'attacks {victim.name}.', announce)
+        if victim.get_mutator(self.world).accept_attack(self.actor):
+            self.actor.victim = victim
+            self.announce(f'attacks {victim.name}.', announce)
+            return True
+        return False
+
+    def accept_attack(self, attacker):
+        if self.actor.victim:
+            self.actor.attack_queue.append(attacker)
+        else:
+            self.actor.victim = attacker
+        return True
 
     def kick(self, method):
         victim = self.actor.victim
@@ -370,11 +378,10 @@ class ActorMutator(StateMutator):
             self.die()
 
     def cleanup_victims(self):
+        queue = self.actor.attack_queue
         victim = self.actor.victim
-        if victim and (
+        while victim and (
                 not victim.alive  # victim's dead
                 or not self.actor.alive  # actor's dead
                 or victim.location is not self.actor.location):  # someone ran away
-            if victim.victim is self.actor:
-                victim.victim = None
-            self.actor.victim = None
+            victim = self.actor.victim = queue.pop() if queue else None

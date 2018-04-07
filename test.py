@@ -69,12 +69,13 @@ class ChatflowTestCase(unittest.TestCase):
         cls.messages = MockSendMessage()
         cls.cmd_pfx = CommandPrefix('#')
         cls.storage = Storage(cls.messages.send_callback_factory, redis=MockRedis(), cmd_pfx=cls.cmd_pfx)
+        cls.world = cls.storage.world
 
         for migrate in migrations:
             migrate(cls.storage)
 
         cls.player = cls.storage.get_player_state(0)
-        cls.chatflow = cls.player.get_mutator(cls.storage.world)
+        cls.chatflow = cls.player.get_mutator(cls.world)
 
     def setUp(self):
         self.messages.reset()
@@ -164,18 +165,18 @@ class ChatflowTestCase(unittest.TestCase):
 
     def test_03_peasant_ai(self):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
-        mutator = peasant.get_mutator(self.storage.world)
+        mutator = peasant.get_mutator(self.world)
 
         self.send('#drop')
         self.send(self.get_option("vegetable"))
 
         self.cycle(
-            self.storage.world.enact,
+            self.world.enact,
             lambda: any(peasant.bag.filter(Vegetable)),
             "Peasant didn't pick a vegetable up")
 
         self.cycle(
-            self.storage.world.enact,
+            self.world.enact,
             lambda: not any(peasant.bag.filter(Vegetable)),
             "Peasant didn't eat a vegetable")
 
@@ -188,18 +189,18 @@ class ChatflowTestCase(unittest.TestCase):
             "Peasant's tunic did not deteriorate")
 
         self.cycle(
-            self.storage.world.enact,
+            self.world.enact,
             lambda: peasant.location == self.player.location,
             "Peasant didn't return to the house")
 
         self.cycle(
-            self.storage.world.enact,
+            self.world.enact,
             lambda: any(peasant.bag.filter(Spindle)),
             "Peasant didn't make a spindle")
 
         peasant.bag.update([Cotton(), Cotton()])
         self.cycle(
-            self.storage.world.enact,
+            self.world.enact,
             lambda: isinstance(peasant.wears, RoughspunTunic),
             "Peasant didn't spin a tunic",
             max_cycles=200)
@@ -210,7 +211,7 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('#south')
 
         self.cycle(
-            self.storage.world.enact,
+            self.world.enact,
             lambda: peasant.location == self.player.location,
             "Peasant didn't return to a field")
 
@@ -356,11 +357,11 @@ class ChatflowTestCase(unittest.TestCase):
         self.send(f"#{Punch}")
         self.assertLess(rat.hitpoints, had_hitpoints)
 
-        # escaping a location shouldn't prevent npc from kicking you till the end of current cycle
+        # escaping a location shouldn't prevent npc from kicking you during the same cycle
         self.send("#south")
 
         had_hitpoints = self.player.hitpoints
-        self.storage.world.enact()
+        self.world.enact()
         self.assertReplyContains('rat bites you')
         # self.assertLess(self.player.hitpoints, had_hitpoints)
 
@@ -372,10 +373,49 @@ class ChatflowTestCase(unittest.TestCase):
         self.send(self.get_option("rat"))
 
         self.send(f"#{Punch}")
-        self.storage.world.enact()
+        self.world.enact()
         self.assertReplyContains('rat dies')
 
         self.assertIsNone(self.player.victim)
+        self.cycle(
+            self.world.enact,
+            lambda: any(self.chatflow.location.actors.filter(RatState)),
+            "Rat didn't respawn")
+
+    def test_11_coop_attack(self):
+        player2 = self.storage.get_player_state(1)
+        chatflow2 = player2.get_mutator(self.world)
+
+        chatflow2.process_message("#start")
+        chatflow2.process_message("Player2")
+        chatflow2.process_message("#start")
+
+        self.assertIn(player2, self.chatflow.location.actors)
+        chatflow2.process_message("#attack")
+        chatflow2.process_message(self.get_option("rat"))
+        rat, = self.chatflow.location.actors.filter(RatState)
+
+        self.assertIs(player2.victim, rat)
+        self.assertIs(rat.victim, player2)
+
+        self.assertIs(self.player.location, Field)
+        self.send("#attack")
+        self.send(self.get_option("rat"))
+
+        self.assertIs(self.player.victim, rat)
+        self.assertIs(rat.victim, player2)
+
+        chatflow2.process_message("#north")
+        self.world.enact()
+
+        self.assertIsNone(player2.victim)
+        self.assertIs(self.player.victim, rat)
+        self.assertIs(rat.victim, self.player)
+
+        self.send("#north")
+        self.world.enact()
+        self.assertIsNone(self.player.victim)
+        self.assertIsNone(rat.victim)
 
 
 def load_tests(loader, tests, pattern):

@@ -47,6 +47,7 @@ class ActorState(State):
         self.wears = None
         self.wields = None
         self.victim = None
+        self.attack_queue = []
         self.hitpoints = 0
 
     @property
