@@ -62,23 +62,35 @@ class MockRedis(object):
     def lock(self, *args, **kwargs):
         return MockLockObject()
 
+    def delete(self, key):
+        if key in self.dict:
+            del self.dict[key]
+
 
 class ChatflowTestCase(unittest.TestCase):
+    @classmethod
+    def get_storage(cls):
+        return Storage(cls.messages.send_callback_factory, redis=cls.redis, cmd_pfx=cls.cmd_pfx)
+
     @classmethod
     def setUpClass(cls):
         cls.messages = MockSendMessage()
         cls.cmd_pfx = CommandPrefix('#')
-        cls.storage = Storage(cls.messages.send_callback_factory, redis=MockRedis(), cmd_pfx=cls.cmd_pfx)
-        cls.world = cls.storage.world
-
+        cls.redis = MockRedis()
+        storage = cls.get_storage()
         for migrate in migrations:
-            migrate(cls.storage)
-
-        cls.player = cls.storage.get_player_state(0)
-        cls.chatflow = cls.player.get_mutator(cls.world)
+            migrate(storage)
+        storage.save()
 
     def setUp(self):
+        self.storage = self.get_storage()
+        self.world = self.storage.world
+        self.player = self.storage.get_player_state(0)
+        self.chatflow = self.player.get_mutator(self.world)
+
+    def tearDown(self):
         self.messages.reset()
+        self.storage.save()
 
     def assertReplyContains(self, *args):
         messages = "\n".join(self.messages)
@@ -320,8 +332,8 @@ class ChatflowTestCase(unittest.TestCase):
         self.send('#pick')
         self.assertReplyContains('mushroom')
         self.assertTrue(any(self.player.bag.filter(Mushroom)))
-
         self.send('#eat')
+
         self.send(self.get_option('mushroom'))
         self.assertReplyContains('high')
         self.assertTrue(self.player.is_high)

@@ -5,7 +5,6 @@ from .mutators import ActorMutator
 from .locations import StartLocation, Direction
 from .commodities import ActionClasses, DirtyRags, Weapon
 from .states import ActorState
-from .npcs import NpcState
 from .utils import credits, list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
 from .attacks import HumanAttacks
@@ -47,33 +46,40 @@ class InputHandler(object):
 class ChoiceHandler(InputHandler):
     def __init__(self, state, command, f, bag, cmd_pfx, prompt=None,
                  select_subset=False, skip_single=False):
-        bag = set(bag)
-        self.bag = list(group_by_class(bag))
+        self.bag = bag
         prompt = prompt or "what to %s" % command
         self.prompt_str = "Please choose %s" % prompt
         self.all = select_subset and bag
         self.skip_single = skip_single
         super(ChoiceHandler, self).__init__(state, command, f, self._get_prompt(), cmd_pfx)
 
+    def get_bag(self):
+        if "bag" not in self.state:
+            self.state.update(bag=self.bag)
+        return self.state["bag"].group_by_class()
+
     def _get_prompt(self):
         if self.all:
             yield "%s or %s %sall:" % (self.prompt_str, self.command, self.cmd_pfx)
         else:
             yield "%s:" % self.prompt_str
-        for n, (caption, item) in enumerate(self.bag):
+        for n, (caption, item) in enumerate(self.get_bag()):
             yield "%s%d. %s" % (self.cmd_pfx, n + 1, caption)
 
     def _modify_arg(self, arg):
+        bag = list(self.get_bag())
+
         arg = self.cmd_pfx.get_cmd(arg, arg)
         if self.all and arg == 'all':
             return self.all
 
         item = None
-        if self.skip_single and len(self.bag) == 1:
-            caption, item = self.bag.pop(0)
+        if self.skip_single and len(bag) == 1:
+            caption, item = bag.pop(0)
+            self.state.clear()  # skip_single won't trigger regular clean up
         elif isinstance(arg, str) and arg.isdigit() and arg != '0':
             try:
-                name, item = self.bag[int(arg) - 1]
+                name, item = bag[int(arg) - 1]
             except IndexError:
                 pass
         if item:
@@ -336,7 +342,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                 lambda *args:
                     "There's no one here you can attack."
                     if not any(self.others)
-                    else self.choice('attack', self.attack, self.others, prompt="whom to attack")(*args))
+                    else self.choice('attack', self.attack, ActorSet(self.others), prompt="whom to attack")(*args))
 
             attacks = set(self.organic_attacks)
             attacks.update(cls.attack for cls in Weapon.__subclasses__())
@@ -349,7 +355,8 @@ class Chatflow(ActorMutator, HumanAttacks):
             yield (
                 'pick',
                 lambda *args:
-                    self.choice('pick', self.pick, self.location.items, skip_single=True, select_subset=True)(*args)
+                    self.choice('pick', self.pick, CommoditySet(self.location.items),
+                                skip_single=True, select_subset=True)(*args)
                     if self.location.items
                     else nothing_there)
 
@@ -371,7 +378,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                 lambda *args:
                     "Your bag is already empty."
                     if not self.actor.bag
-                    else self.choice('drop', self.drop, self.actor.bag, select_subset=True)(*args))
+                    else self.choice('drop', self.drop, CommoditySet(self.actor.bag), select_subset=True)(*args))
 
             for cls in ActionClasses.__subclasses__():
                 yield (
@@ -380,7 +387,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                         "You have nothing you can %s." % cls.verb
                         if not any(self.actor.bag.filter(cls))
                         else self.choice(cls.verb, lambda i: getattr(self, cls.verb)(i),
-                                         self.actor.bag.filter(cls), skip_single=True)(*args))
+                                         CommoditySet(self.actor.bag.filter(cls)), skip_single=True)(*args))
 
             yield (
                 'unequip',
@@ -473,17 +480,15 @@ class Chatflow(ActorMutator, HumanAttacks):
             yield f"On the ground you see {items_sentence}. " \
                   f"You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
 
-        others = FilterSet(self.others)
+        others = ActorSet(self.others)
         if others:
             if len(others) > 1:
                 yield "You see:"
-                actor_groups = (others.filter(cls) for cls in (NpcState, PlayerState))
-                for actor_group in actor_groups:
-                    for actor in sorted(actor_group, key=lambda a: (type(a).__name__, a.name)):
-                        yield f"  • {actor.get_full_descr(self.actor)}"
+                for name, actor in others.group_by_class():
+                    yield f"  • {actor.get_full_descr(self.actor)}"
             else:
-                for actor in others:
-                    yield f"You see {actor.get_full_descr(self.actor)}."
+                actor, = others
+                yield f"You see {actor.get_full_descr(self.actor)}."
 
             actions = [f'take a closer {self.cmd_pfx}look at them']
 
@@ -507,16 +512,16 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.barter,
 
             dict(arg='counterparty',
-                 bag=(o for o in self.others if o.barters),
+                 bag=ActorSet(o for o in self.others if o.barters),
                  prompt="whom to barter with",
                  skip_single=True),
 
             dict(arg='for_what',
-                 bag=lambda counterparty: counterparty.bag,
+                 bag=lambda counterparty: CommoditySet(counterparty.bag),
                  prompt="what to barter for"),
 
             dict(arg='what',
-                 bag=self.actor.bag,
+                 bag=CommoditySet(self.actor.bag),
                  prompt="what to barter off"))
 
     def get_sell_chain(self):
@@ -525,12 +530,12 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.sell,
 
             dict(arg='counterparty',
-                 bag=(o for o in self.others if o.buys),
+                 bag=ActorSet(o for o in self.others if o.buys),
                  prompt="whom to sell to",
                  skip_single=True),
 
             dict(arg="what",
-                 bag=self.actor.bag,
+                 bag=CommoditySet(self.actor.bag),
                  prompt="what to sell"))
 
     def get_buy_chain(self):
@@ -539,24 +544,23 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.buy,
 
             dict(arg='counterparty',
-                 bag=(o for o in self.others if o.buys),
+                 bag=ActorSet(o for o in self.others if o.buys),
                  prompt="whom to buy from",
                  skip_single=True),
 
             dict(arg="what",
-                 bag=lambda counterparty: counterparty.for_sale,
+                 bag=lambda counterparty: CommoditySet(counterparty.for_sale),
                  prompt="what to buy"))
 
     def go(self, direction):
-        if super(Chatflow, self).go(direction):
+        if super().go(direction):
             return self.where()
 
     def pick(self, item_or_items):
-        super(Chatflow, self).pick(
-            item_or_items, announce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
+        super().pick(item_or_items, announce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
 
     def unequip(self):
-        super(Chatflow, self).unequip(announce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
+        super().unequip(announce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
 
     def bag(self):
         actions = ['drop']
@@ -571,7 +575,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             yield f"You have {credits(self.actor.credits)}."
         else:
             yield "You look into your bag and see:"
-            for n, (caption, item) in enumerate(group_by_class(self.actor.bag)):
+            for n, (caption, item) in enumerate(CommoditySet(self.actor.bag).group_by_class()):
                 yield f"{n + 1:d}. {caption}"
 
             yield f"You have {credits(self.actor.credits)}."
@@ -613,6 +617,20 @@ class Chatflow(ActorMutator, HumanAttacks):
             return f"You can't {method.verb} with {with_}."
         if not super().kick(method):
             return f"You fail to {method.verb} {self.actor.victim.name}."
+
+
+class StateSet(FilterSet):
+    def group_by_class(self):
+        return group_by_class(self)
+
+
+class CommoditySet(StateSet):
+    pass
+
+
+class ActorSet(StateSet):
+    def group_by_class(self):
+        return group_by_class(self)
 
 
 class PlayerState(ActorState):

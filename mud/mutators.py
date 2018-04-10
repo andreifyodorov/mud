@@ -332,7 +332,9 @@ class ActorMutator(StateMutator):
         return True
 
     def attack(self, victim, announce=None):
-        if victim.get_mutator(self.world).accept_attack(self.actor):
+        if (victim.alive
+                and victim.location is self.actor.location
+                and victim.get_mutator(self.world).accept_attack(self.actor)):
             self.actor.victim = victim
             self.announce(f'attacks {victim.name}.', announce)
             return True

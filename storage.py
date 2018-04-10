@@ -7,6 +7,7 @@ from mud.npcs import NpcState
 from mud.locations import Location
 from mud.production import MeansOfProduction
 from mud.commodities import Commodity
+from mud.utils import FilterSet
 
 import settings
 
@@ -134,6 +135,8 @@ class Storage(object):
                 return Location.all[arg]
             elif cls == 'PlayerState':
                 return self.get_player_state(arg)
+            elif cls in {'FilterSet', 'ActorSet', 'CommoditySet'}:
+                return eval(cls)(self.deserialize(arg))
             else:
                 return self.get_entity_state(cls, arg)
         elif isinstance(v, list):
@@ -177,6 +180,8 @@ class Storage(object):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
+        elif isinstance(o, FilterSet):
+            return (o.__class__.__name__, self.serialize(set(o)))
         elif isinstance(o, self.entity_classes):
             return self.serialize_entity(o)
         elif isinstance(o, list):
@@ -190,6 +195,9 @@ class Storage(object):
             return serialized
         elif isinstance(o, (str, int, float, bool)):
             return o
+        elif o is None or callable(o):
+            return None
+        raise ValueError(o)
 
     def all_players(self):
         keys = (key.split(b':', 1) for key in self.redis.keys(self._player_key % "*"))

@@ -5,7 +5,7 @@ import pprint
 
 from mud.player import PlayerState, Chatflow, CommandPrefix  # noqa: F401
 from mud.locations import StartLocation, Location, Field, VillageHouse, TownGate, MarketSquare  # noqa: F401
-from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, DirtyRags, Shovel  # noqa: F401
+from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, DirtyRags, Shovel, RoughspunTunic  # noqa: F401
 from mud.npcs import PeasantState  # noqa: F401
 from test import MockRedis
 from storage import Storage
@@ -36,7 +36,8 @@ def send_callback_factory(chatkey):
 
 if __name__ == '__main__':
     cmd_pfx = CommandPrefix('/')
-    storage = Storage(send_callback_factory, redis=MockRedis(), cmd_pfx=cmd_pfx)
+    redis = MockRedis()
+    storage = Storage(send_callback_factory, redis=redis, cmd_pfx=cmd_pfx)
 
     for migrate in migrations:
         # print "Apply migration %s" % migrate
@@ -44,7 +45,7 @@ if __name__ == '__main__':
 
     player = storage.get_player_state(PLAYER_CHATKEY)
     player.name = 'Andrey'
-    player.bag.update([Shovel(), Mushroom()])
+    player.bag.update([Shovel(), Mushroom(), RoughspunTunic()])
     Chatflow(player, storage.world).spawn(StartLocation)
 
     observer = storage.get_player_state(OBSERVER_CHATKEY)
@@ -56,6 +57,7 @@ if __name__ == '__main__':
     # peasant.get_mutator(storage.world).spawn(Field)
 
     storage.world[Field.id].items.update([Vegetable(), Spindle()])
+    storage.save()
 
     s = '/where'
     # s = '/start'
