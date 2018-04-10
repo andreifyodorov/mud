@@ -25,7 +25,7 @@ def credits(x):
     if not x:
         return "no credits"
     if x > 1:
-        return "{x:d} credits"
+        return f"{x:d} credits"
     return "1 credit"
 
 
