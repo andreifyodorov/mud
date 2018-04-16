@@ -615,7 +615,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             yield f"You have {credits(self.actor.credits)}."
         else:
             yield "You look into your bag and see:"
-            for n, (caption, item) in enumerate(CommoditySet(self.actor.bag).display_list()):
+            for n, (caption, item) in enumerate(CommoditySet(self.actor.bag).get_display_list()):
                 yield f"{n + 1:d}. {caption}"
             yield f"You can {actions_sentence} items."
             yield f"You have {credits(self.actor.credits)}."

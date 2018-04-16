@@ -169,6 +169,7 @@ class ChatflowTestCase(unittest.TestCase):
 
         self.assertReplyContains('#bag')
         self.assertEqual(len(self.player.bag), 2)
+        self.send('#bag')
 
         self.player.bag.clear()
         self.player.bag.add(Vegetable())
