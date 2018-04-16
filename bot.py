@@ -128,7 +128,7 @@ class Bot():
         #     self.sendMessage(text=".", chat_id=chat_id, reply_markup=reply_markup)
 
     def get_bot_request(self):
-        return BotRequest(self)
+        return BotRequest(self.bot)
 
     def get_player_bot_request(self, request):
         update = telegram.update.Update.de_json(request.get_json(force=True), self)
