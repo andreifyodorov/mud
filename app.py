@@ -2,43 +2,40 @@
 
 from flask import Flask, request
 
-from bot import telegram, bot
+from bot import bot
 from mud import Chatflow
 from storage import Storage
 
 import settings
 
 
-bot.setWebhook(url='https://%s/%s' % (settings.WEBHOOK_HOST, settings.TOKEN),
-               certificate=open(settings.CERT, 'rb'))
-# print bot.getWebhookInfo()
-
 app = Flask(__name__)
 
 
 @app.route('/' + settings.TOKEN, methods=['POST'])
 def webhook():
-    update = telegram.update.Update.de_json(request.get_json(force=True), bot)
+    bot_request = bot.get_player_bot_request(request)
 
-    if update.message is not None:
-        message = update.message.text
-        chatkey = update.message.chat_id
-
-        storage = Storage(bot.send_callback_factory, cmd_pfx=bot.cmd_pfx)
-        chatflow = Chatflow(storage.get_player_state(chatkey), storage.world, bot.cmd_pfx)
-        chatflow.process_message(message)
-        storage.save()
-
-    bot.send_messages()
+    if bot_request:
+        storage = Storage(bot_request.send_callback_factory, cmd_pfx=bot.cmd_pfx)
+        player = storage.get_player_state(bot_request.chatkey)
+        chatflow = Chatflow(player, storage.world, bot.cmd_pfx)
+        if bot_request.process_message(chatflow):  # bot-specific UI commands
+            storage.release()
+        else:
+            chatflow.process_message(bot_request.message_text)
+            storage.save()
+        bot_request.send_messages()
 
     return b'OK'
 
 
 def enact(*args):
-    storage = Storage(bot.send_callback_factory, cmd_pfx=bot.cmd_pfx)
+    bot_request = bot.get_bot_request()
+    storage = Storage(bot_request.send_callback_factory, cmd_pfx=bot.cmd_pfx)
     storage.world.enact()
     storage.save()
-    bot.send_messages()
+    bot_request.send_messages()
 
 
 try:

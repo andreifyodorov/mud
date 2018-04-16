@@ -1,16 +1,15 @@
 from collections import defaultdict
 
 from mud.player import CommandPrefix
+from storage import PlayerSessionsStorage
 import settings
 
 import telegram
 
 
-class Bot(telegram.Bot):
-    cmd_pfx = CommandPrefix('/')
-
-    def __init__(self, *args, **kwargs):
-        super(Bot, self).__init__(settings.TOKEN, *args, **kwargs)
+class BotRequest(object):
+    def __init__(self, bot):
+        self.bot = bot
         self.message_queue = defaultdict(list)
 
     def send_callback_factory(self, chatkey):
@@ -18,11 +17,123 @@ class Bot(telegram.Bot):
             self.message_queue[chatkey].append(msg)
         return callback
 
-    def send_messages(self):
+    def get_send_message_args(self):
         while self.message_queue:
-            chat_id, messages = self.message_queue.popitem()
+            chatkey, messages = self.message_queue.popitem()
             text = "\n\n".join(messages)
-            self.sendMessage(parse_mode="Markdown", chat_id=chat_id, text=text)
+            yield dict(chat_id=chatkey, text=text)
+
+    def send_messages(self):
+        for args in self.get_send_message_args():
+            self.bot.sendMessage(parse_mode="Markdown", **args)
+
+
+class PlayerBotRequest(BotRequest):
+    category_icons = (
+        ('location', '🚶'),
+        ('social', '👬'),
+        ('inventory', '💼'),
+        ('produce', '🛠️'),
+        ('general', '…')
+    )
+
+    def __init__(self, bot, message, session, cmd_pfx):
+        super().__init__(bot)
+        self.message = message
+        self.session = session
+        self.cmd_pfx = cmd_pfx
+        self.chatflow = None
+
+    @property
+    def message_text(self):
+        return self.message.text
+
+    @property
+    def chatkey(self):
+        return self.message.chat_id
+
+    def get_commands(self):
+        return {c: [n for n, f in cmds]
+                for c, cmds
+                in self.chatflow.get_commands_by_category().items()}
+
+    def process_message(self, chatflow):
+        self.chatflow = chatflow
+        categories = {i: c for c, i in self.category_icons}
+        if self.message.text in categories:
+            category = categories[self.message.text]
+            self.session.set('category', category)
+            return True
+        return False
+
+    def get_new_keyboard(self):
+        commands = self.get_commands()
+        category = self.session.get("category")
+        if category is None or category not in commands:
+            category = next(iter(commands.keys()))
+            self.session.set('category', category)
+
+        keyboard = []
+        # for category in commands:
+        for i in range(0, len(commands[category]), 4):
+            row = commands[category][i:i + 4]
+            row = [f"{self.cmd_pfx}{c}" for c in row]
+            keyboard.append(row)
+
+        icons = {c: i for c, i in self.category_icons}
+        icon_row = [icons[c] for c in commands if c in icons]
+        if len(icon_row) > 1:
+            keyboard.append(icon_row)
+
+        keyboard_repr = repr(keyboard)
+        if keyboard_repr == self.session.get('keyboard', 'None'):
+            return
+        self.session.set('keyboard', keyboard_repr)
+        return keyboard, category
+
+    def get_send_message_args(self):
+        keyboard = self.get_new_keyboard()
+        if keyboard:
+            keyboard, category = keyboard
+            reply_markup = telegram.ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+            flag_seen_player = False
+            for args in super().get_send_message_args():
+                if args["chat_id"] == self.message.chat_id:
+                    args.update(reply_markup=reply_markup)
+                    flag_seen_player = True
+                yield args
+
+            if not flag_seen_player:
+                yield dict(chat_id=self.chatkey, text=f"_Showing {category} commands._", reply_markup=reply_markup)
+
+        else:
+            for args in super().get_send_message_args():
+                yield args
+
+
+class Bot():
+    cmd_pfx = CommandPrefix('/')
+
+    def __init__(self, *args, **kwargs):
+        self.bot = telegram.Bot(settings.TOKEN, *args, **kwargs)
+        self.bot.setWebhook(url='https://%s/%s' % (settings.WEBHOOK_HOST, settings.TOKEN),
+                            certificate=open(settings.CERT, 'rb'))
+        # print self.bot.getWebhookInfo()
+        session_storage = PlayerSessionsStorage()
+        self.get_session = session_storage.get_session
+
+        # while self.reply_markups:
+        #     chat_id, reply_markup = self.reply_markups.popitem()
+        #     self.sendMessage(text=".", chat_id=chat_id, reply_markup=reply_markup)
+
+    def get_bot_request(self):
+        return BotRequest(self)
+
+    def get_player_bot_request(self, request):
+        update = telegram.update.Update.de_json(request.get_json(force=True), self)
+        if update.message is not None:
+            return PlayerBotRequest(self.bot, update.message, self.get_session(update.message.chat_id), self.cmd_pfx)
 
 
 bot = Bot()

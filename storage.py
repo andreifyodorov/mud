@@ -1,7 +1,7 @@
 from redis import StrictRedis
 import pprint
 
-from mud.player import PlayerState
+from mud.player import PlayerState, ActorSet, CommoditySet  # noqa: F401
 from mud.world import WorldState
 from mud.npcs import NpcState
 from mud.locations import Location
@@ -12,25 +12,52 @@ from mud.utils import FilterSet
 import settings
 
 
-class Storage(object):
-    entity_classes = (NpcState, Commodity, MeansOfProduction)  # order matters (refs)
-
-    _player_key = "player:%s"
-    _location_key = "location:%s"
-    _entity_key = "entity:%s:%s"
+class RedisStorage(object):
+    def __init__(self, redis=None):
+        self.redis = redis or self._default_redis_connection
 
     @property
     def _default_redis_connection(self):
         redis = StrictRedis(**settings.REDIS)
         if settings.IS_PLAYGROUND:
             redis.delete('global_lock')
-        setattr(Storage, '_default_redis_connection', redis)
+        setattr(__class__, '_default_redis_connection', redis)  # noqa: F821
         return redis
+
+
+class PlayerSessionsStorage(RedisStorage):
+    _player_session_key = "player_session:%s"
+
+    class PlayerSession(object):
+        def __init__(self, redis, player_key):
+            self.redis = redis
+            self.player_key = player_key
+
+        def get(self, key, default=None):
+            value = self.redis.hget(self.player_key, key)
+            if value is None:
+                return default
+            else:
+                return value.decode()
+
+        def set(self, key, value):
+            return self.redis.hset(self.player_key, key, value)
+
+    def get_session(self, key):
+        return self.PlayerSession(self.redis, self._player_session_key % key)
+
+
+class Storage(RedisStorage):
+    entity_classes = (NpcState, Commodity, MeansOfProduction)  # order matters (refs)
+
+    _player_key = "player:%s"
+    _location_key = "location:%s"
+    _entity_key = "entity:%s:%s"
 
     def __init__(self, send_callback_factory, cmd_pfx, redis=None, chatkey_type=None):
         self.send_callback_factory = send_callback_factory
         self.cmd_pfx = cmd_pfx
-        self.redis = redis or self._default_redis_connection
+        super().__init__(redis)
         self.chatkey_type = chatkey_type or int
         self.players = {}
         self.chatkeys = {}
@@ -70,6 +97,10 @@ class Storage(object):
 
         return player
 
+    def get_player_session(self, chatkey):
+        chatkey = self.chatkey_type(chatkey)
+        return self.PlayerSessionStorage(self.redis, chatkey)
+
     def get_entity_state(self, classname, arg):
         cls = self.entity_subclass_by_name.get(classname, None)
         if cls is None:
@@ -106,13 +137,16 @@ class Storage(object):
         yield "world", self.serialize_state(self.world)
         yield "version", self.version
 
+    def release(self):
+        self.lock_object.release()
+
     def save(self):
         for k, v in self.dump():
             if v:
                 self.redis.set(k, repr(v))
             else:
                 self.redis.delete(k)
-        self.lock_object.release()
+        self.release()
 
     def print_dump(self):
         for k, v in self.dump():

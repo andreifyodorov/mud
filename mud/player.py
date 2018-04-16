@@ -27,13 +27,23 @@ class InputHandler(object):
         self.f = f
         self.prompt = prompt
         self.cmd_pfx = cmd_pfx
+        self.aborted = False
 
     def _modify_arg(self, arg):
         if self.cmd_pfx and self.cmd_pfx.is_cmd(arg):
             return
         return arg
 
+    def _should_abort(self):
+        return
+
     def __call__(self, arg=None):
+        abort_message = self._should_abort()
+        if abort_message:
+            self.state.clear()
+            self.aborted = True
+            return abort_message
+
         arg = self._modify_arg(arg)
         if arg is None:
             self.state.clear()
@@ -44,44 +54,56 @@ class InputHandler(object):
 
 
 class ChoiceHandler(InputHandler):
-    def __init__(self, state, command, f, bag, cmd_pfx, prompt=None,
+    def __init__(self, state, command, f, bag, cmd_pfx, prompt=None, full_prompt=None, empty_message=None,
                  select_subset=False, skip_single=False):
         self.bag = bag
-        prompt = prompt or "what to %s" % command
-        self.prompt_str = "Please choose %s" % prompt
-        self.all = select_subset and bag
+
+        if full_prompt:
+            self.prompt_str = full_prompt
+        else:
+            prompt = prompt or f"what to {command}"
+            self.prompt_str = f"Please choose {prompt}"
+
+        self.empty_message = empty_message
+        self.select_subset = select_subset
         self.skip_single = skip_single
         super(ChoiceHandler, self).__init__(state, command, f, self._get_prompt(), cmd_pfx)
 
-    def get_bag(self):
+    def _should_abort(self):
+        if not self.bag:
+            return self.empty_message or self.bag.empty_message % self.command
+
+    def _get_display_list(self):
         if "bag" not in self.state:
             self.state.update(bag=self.bag)
-        return self.state["bag"].group_by_class()
+        return self.state["bag"].get_display_list()
 
     def _get_prompt(self):
-        if self.all:
-            yield "%s or %s %sall:" % (self.prompt_str, self.command, self.cmd_pfx)
+        if self.select_subset:
+            yield f"{self.prompt_str} or {self.command} {self.cmd_pfx}all:"
         else:
-            yield "%s:" % self.prompt_str
-        for n, (caption, item) in enumerate(self.get_bag()):
-            yield "%s%d. %s" % (self.cmd_pfx, n + 1, caption)
+            yield f"{self.prompt_str}:"
+
+        for n, (caption, item) in enumerate(self._get_display_list()):
+            yield f"{self.cmd_pfx}{n + 1:d}. {caption}"
 
     def _modify_arg(self, arg):
-        bag = list(self.get_bag())
-
         arg = self.cmd_pfx.get_cmd(arg, arg)
-        if self.all and arg == 'all':
-            return self.all
+        if self.select_subset and arg == 'all':
+            return self.bag
 
         item = None
-        if self.skip_single and len(bag) == 1:
-            caption, item = bag.pop(0)
+        if self.skip_single and len(self.bag) == 1:
+            item = self.bag.pop()
             self.state.clear()  # skip_single won't trigger regular clean up
+
         elif isinstance(arg, str) and arg.isdigit() and arg != '0':
+            display_list = self._get_display_list()
             try:
-                name, item = bag[int(arg) - 1]
+                name, item = display_list[int(arg) - 1]
             except IndexError:
                 pass
+
         if item:
             return item
 
@@ -116,12 +138,9 @@ class ChoiceChainHandler(ChoiceHandler):
         bag = self.cur_step['bag']
         return bag(**self.args) if callable(bag) else bag
 
-    @property
-    def cur_check(self):
-        check = self.cur_step.get('check')
-        if callable(check) and not check(**self.args):
-            return False
-        return True
+    def get_cur(self, key, default=None):
+        value = self.cur_step.get(key, default)
+        return value(**self.args) if callable(value) else value
 
     @property
     def skipped(self):
@@ -171,10 +190,15 @@ class ChoiceChainHandler(ChoiceHandler):
 
             handler = ChoiceHandler(
                 self.input_state, self.command, self._store_choice, self.cur_bag, self.cmd_pfx,
-                prompt=self.cur_step.get('prompt'),
-                select_subset=self.cur_step.get('select_subset'),
-                skip_single=self.cur_step.get('skip_single', False))
+                prompt=self.get_cur('prompt'),
+                full_prompt=self.get_cur('full_prompt'),
+                empty_message=self.get_cur('empty_message'),
+                select_subset=self.get_cur('select_subset'),
+                skip_single=self.get_cur('skip_single', False))
             result = handler(arg)
+
+            if handler.aborted:
+                break
 
             if not self.next_step:
                 if self.can_go_back:
@@ -185,7 +209,7 @@ class ChoiceChainHandler(ChoiceHandler):
                 result = chain(result, [footer])
                 break
 
-            if not self.cur_check:
+            if not self.get_cur('check', True):
                 self.state.clear()
                 break
 
@@ -285,128 +309,184 @@ class Chatflow(ActorMutator, HumanAttacks):
     def confirmation(self, cmd, f, prompt):
         return ConfirmationHandler(self.actor.input, cmd, f, prompt, self.cmd_pfx)
 
-    def get_commands(self):
-        yield 'help', self.help
-        yield (
-            'me',
-            lambda:
-                self.look(self.actor) if self.actor.name
-                else self.input('name', self.name, "You didn't introduce yourself yet. Please tell me your name.")())
-
+    def get_commands_by_category(self):
         if self.actor.alive:
-            yield ('restart', self.confirmation('restart', self.die, 'Do you want to restart the game?'))
+            return collections.OrderedDict(
+                location=self.get_location_commands(),
+                social=self.get_social_commands(),
+                inventory=self.get_inventory_commands(),
+                produce=self.get_production_commands(),
+                general=self.get_alive_general_commands())
+        else:
+            return dict(general=self.get_dead_general_commands())
 
-            yield 'where', lambda: self.where()
+    def get_commands(self):
+        return chain.from_iterable(self.get_commands_by_category().values())
 
-            for l in Direction.all:
-                yield (
-                    l,
-                    lambda:
-                        self.go(l) if l in self.actor.location.exits
-                        else "You can't go %s from here." % l if l in Direction.compass
-                        else "You can't %s here." % l)
+    def get_me_command(self):
+        if self.actor.name:
+            return lambda: self.look(self.actor)
+        else:
+            return self.input('name', self.name, "You didn't introduce yourself yet. Please tell me your name.")
 
-            yield (
-                'look',
-                lambda *args:
-                    'You look around and think, "There\'s no one here but %sme".' % self.cmd_pfx
-                    if not any(self.others)
-                    else self.choice('look', self.look, self.others, prompt="whom to look at", skip_single=True)(*args))
+    def get_alive_general_commands(self):
+        yield 'me', self.get_me_command()
+        yield 'restart', self.confirmation('restart', self.die, 'Do you want to restart the game?')
+        yield 'help', self.help
 
-            yield (
-                'barter',
-                lambda *args:
-                    "There's no one here you can barter with."
-                    if not any(o.barters for o in self.others)
-                    else 'Your bag is empty, you have nothing to offer.' if not self.actor.bag
-                    else self.get_barter_chain()(*args))
-
-            yield (
-                'sell',
-                lambda *args:
-                    "There's no one here you can sell to."
-                    if not any(o.buys for o in self.others)
-                    else 'Your bag is empty, you have nothing to sell.' if not self.actor.bag
-                    else self.get_sell_chain()(*args))
-
-            yield (
-                'buy',
-                lambda *args:
-                    "There's no one here you can buy from."
-                    if not any(o.sells for o in self.others)
-                    else 'Your have no credits to buy anything.' if not self.actor.credits
-                    else self.get_buy_chain()(*args))
-
-            yield (
-                'attack',
-                lambda *args:
-                    "There's no one here you can attack."
-                    if not any(self.others)
-                    else self.choice('attack', self.attack, ActorSet(self.others), prompt="whom to attack")(*args))
-
-            attacks = set(self.organic_attacks)
-            attacks.update(cls.attack for cls in Weapon.__subclasses__())
-            for attack in attacks:
-                yield (
-                    attack.verb,
-                    lambda: "You're not attacking anyone." if not self.actor.victim else self.kick(attack))
-
-            nothing_there = 'There is nothing on the ground that you can pick up.',
-            yield (
-                'pick',
-                lambda *args:
-                    self.choice('pick', self.pick, CommoditySet(self.location.items),
-                                skip_single=True, select_subset=True)(*args)
-                    if self.location.items
-                    else nothing_there)
-
-            yield (
-                'collect',
-                lambda:
-                    self.pick(self.location.items)
-                    if self.location.items
-                    else nothing_there)
-
-            yield (
-                'bag',
-                lambda:
-                    self.bag() if self.actor.bag
-                    else f'Your bag is empty. You have {credits(self.actor.credits)}.')
-
-            yield (
-                'drop',
-                lambda *args:
-                    "Your bag is already empty."
-                    if not self.actor.bag
-                    else self.choice('drop', self.drop, CommoditySet(self.actor.bag), select_subset=True)(*args))
-
-            for cls in ActionClasses.__subclasses__():
-                yield (
-                    cls.verb,
-                    lambda *args:
-                        "You have nothing you can %s." % cls.verb
-                        if not any(self.actor.bag.filter(cls))
-                        else self.choice(cls.verb, lambda i: getattr(self, cls.verb)(i),
-                                         CommoditySet(self.actor.bag.filter(cls)), skip_single=True)(*args))
-
-            yield (
-                'unequip',
-                lambda *args: self.unequip(*args) if self.actor.wields else "You aren't wielding anything.")
-
-            for cls in MeansOfProduction.__subclasses__():
-                yield (
-                    cls.verb,
-                    lambda:
-                        self.produce(next(self.location.means.filter(cls)))
-                        if any(self.location.means.filter(cls))
-                        else "You can't {cls.verb} here.")
-
-            yield ('sleep', lambda: self.sleep() if not self.actor.asleep else "You're alreay asleep.")
-
-            return
-
+    def get_dead_general_commands(self):
         yield 'start', self.start
         yield 'name', self.input('name', self.name, "Please tell me your name.")
+        yield 'me', self.get_me_command()
+        yield 'help', self.help
+
+    def get_exit_command(self, l):
+        def exit():
+            if l in self.actor.location.exits:
+                return self.go(l)
+            else:
+                if l in Direction.compass:
+                    return f"You can't go {l} from here."
+                else:
+                    return f"You can't {l} here."
+        return exit
+
+    def get_location_commands(self):
+        for l in Direction.all:
+            yield l, self.get_exit_command(l)
+        yield 'where', lambda: self.where()
+
+    def get_look_command(self):
+        return self.choice(
+            'look',
+            self.look,
+            ActorSet(self.others),
+            skip_single=True,
+            prompt="whom to look at",
+            empty_message=f'You look around and think, "There\'s no one here but {self.cmd_pfx}me".')
+
+    def get_barter_command(self):
+        return self.choice_chain(
+            'barter',
+            self.barter,
+
+            dict(arg='counterparty',
+                 bag=ActorSet(o for o in self.others if o.barters),
+                 prompt="whom to barter with",
+                 empty_message="There's no one here you can barter with.",
+                 skip_single=True),
+
+            dict(arg='for_what',
+                 bag=lambda counterparty: CommoditySet(counterparty.bag),
+                 full_prompt=lambda counterparty: f"{counterparty.Name} offers you to choose what to barter for"),
+
+            dict(arg='what',
+                 bag=CommoditySet(self.actor.bag),
+                 prompt=lambda counterparty, for_what: f"what to barter off for {for_what.name}",
+                 empty_message="Your bag is empty, you have nothing to offer in exchange."))
+
+    def get_sell_command(self):
+        return self.choice_chain(
+            'sell',
+            self.sell,
+
+            dict(arg='counterparty',
+                 bag=ActorSet(o for o in self.others if o.buys),
+                 prompt="whom to sell to",
+                 empty_message="There's no one here you can sell to.",
+                 skip_single=True),
+
+            dict(arg="what",
+                 bag=CommoditySet(self.actor.bag),
+                 prompt="what to sell",
+                 empty_message="Your bag is empty, you have nothing to sell."))
+
+    def get_buy_command(self):
+        if self.actor.credits:
+            return self.choice_chain(
+                'buy',
+                self.buy,
+
+                dict(arg='counterparty',
+                     bag=ActorSet(o for o in self.others if o.buys),
+                     prompt="whom to buy from",
+                     empty_message="There's no one here you can buy from.",
+                     skip_single=True),
+
+                dict(arg="what",
+                     bag=lambda counterparty: CommoditySet(counterparty.for_sale),
+                     prompt="what to buy"))
+        else:
+            return lambda: 'Your have no credits to buy anything.'
+
+    def get_attack_command(self):
+        return self.choice(
+            'attack',
+            self.attack,
+            ActorSet(self.others),
+            prompt="whom to attack",
+            empty_message="There's no one here you can attack.")
+
+    def get_social_commands(self):
+        yield 'look', self.get_look_command()
+        yield 'barter', self.get_barter_command()
+        yield 'sell', self.get_sell_command()
+        yield 'buy', self.get_buy_command()
+        yield 'attack', self.get_attack_command()
+
+        attacks = set(self.organic_attacks)
+        attacks.update(cls.attack for cls in Weapon.__subclasses__())
+        if not self.actor.victim:
+            for attack in attacks:
+                yield attack.verb, lambda: "You're not attacking anyone."
+        else:
+            for attack in attacks:
+                yield attack.verb, lambda: self.kick(attack)
+
+    def get_pick_command(self):
+        return self.choice(
+            'pick',
+            self.pick,
+            CommoditySet(self.location.items),
+            skip_single=True,
+            select_subset=True)
+
+    def get_drop_command(self):
+        return self.choice(
+            'drop',
+            self.drop,
+            CommoditySet(self.actor.bag),
+            select_subset=True,
+            empty_message="Your bag is already empty.")
+
+    def get_commodity_action_command(self, cls):
+        return self.choice(
+            cls.verb,
+            lambda item: getattr(self, cls.verb)(item),
+            CommoditySet(self.actor.bag.filter(cls)),
+            empty_message="You have nothing you can %s." % cls.verb,
+            skip_single=True)
+
+    def get_inventory_commands(self):
+        yield 'bag', self.bag
+
+        if self.location.items:
+            yield 'pick', self.get_pick_command()
+            yield 'collect', lambda: self.pick(self.location.items)
+        else:
+            for cmd in ('pick', 'collect'):
+                yield cmd, 'There is nothing on the ground that you can pick up.'
+
+        yield 'drop', self.get_drop_command()
+
+        for cls in ActionClasses.__subclasses__():
+            yield cls.verb, self.get_commodity_action_command(cls)
+
+        yield 'unequip', self.unequip
+
+    def get_production_commands(self):
+        for cls in MeansOfProduction.__subclasses__():
+            yield cls.verb, lambda: self.produce(cls)
 
     def welcome(self):
         yield "Hello and welcome to this little MUD game."
@@ -484,7 +564,7 @@ class Chatflow(ActorMutator, HumanAttacks):
         if others:
             if len(others) > 1:
                 yield "You see:"
-                for name, actor in others.group_by_class():
+                for name, actor in others.get_display_list():
                     yield f"  • {actor.get_full_descr(self.actor)}"
             else:
                 actor, = others
@@ -506,52 +586,6 @@ class Chatflow(ActorMutator, HumanAttacks):
             actions_sentence = list_sentence(actions, glue="or")
             yield f"You can {actions_sentence}."
 
-    def get_barter_chain(self):
-        return self.choice_chain(
-            'barter',
-            self.barter,
-
-            dict(arg='counterparty',
-                 bag=ActorSet(o for o in self.others if o.barters),
-                 prompt="whom to barter with",
-                 skip_single=True),
-
-            dict(arg='for_what',
-                 bag=lambda counterparty: CommoditySet(counterparty.bag),
-                 prompt="what to barter for"),
-
-            dict(arg='what',
-                 bag=CommoditySet(self.actor.bag),
-                 prompt="what to barter off"))
-
-    def get_sell_chain(self):
-        return self.choice_chain(
-            'sell',
-            self.sell,
-
-            dict(arg='counterparty',
-                 bag=ActorSet(o for o in self.others if o.buys),
-                 prompt="whom to sell to",
-                 skip_single=True),
-
-            dict(arg="what",
-                 bag=CommoditySet(self.actor.bag),
-                 prompt="what to sell"))
-
-    def get_buy_chain(self):
-        return self.choice_chain(
-            'buy',
-            self.buy,
-
-            dict(arg='counterparty',
-                 bag=ActorSet(o for o in self.others if o.buys),
-                 prompt="whom to buy from",
-                 skip_single=True),
-
-            dict(arg="what",
-                 bag=lambda counterparty: CommoditySet(counterparty.for_sale),
-                 prompt="what to buy"))
-
     def go(self, direction):
         if super().go(direction):
             return self.where()
@@ -560,9 +594,15 @@ class Chatflow(ActorMutator, HumanAttacks):
         super().pick(item_or_items, announce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
 
     def unequip(self):
+        if not self.actor.wields:
+            return "You aren't wielding anything."
         super().unequip(announce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
 
     def bag(self):
+        if not self.bag:
+            yield f'Your bag is empty. You have {credits(self.actor.credits)}.'
+            return
+
         actions = ['drop']
         for cls in ActionClasses.__subclasses__():
             if any(self.actor.bag.filter(cls)):
@@ -571,29 +611,33 @@ class Chatflow(ActorMutator, HumanAttacks):
 
         if len(self.actor.bag) == 1:
             item, = self.actor.bag
-            yield f"In your bag there's nothing but {item.descr}. You can {actions_sentence} it."
+            yield f"You have nothing but {item.descr} in your bag. You can {actions_sentence} it."
             yield f"You have {credits(self.actor.credits)}."
         else:
             yield "You look into your bag and see:"
-            for n, (caption, item) in enumerate(CommoditySet(self.actor.bag).group_by_class()):
+            for n, (caption, item) in enumerate(CommoditySet(self.actor.bag).display_list()):
                 yield f"{n + 1:d}. {caption}"
-
-            yield f"You have {credits(self.actor.credits)}."
             yield f"You can {actions_sentence} items."
+            yield f"You have {credits(self.actor.credits)}."
 
-    def produce(self, means):
+    def produce(self, means_cls):
+        means = next(self.location.means.filter(means_cls), None)
+        if not means:
+            return f"You can't {means_cls.verb} anything here."
+
         missing = list()
         fruits = super(Chatflow, self).produce(means, missing)
 
         if not fruits:
             if missing:
-                return "You need %s to %s." % (pretty_list(i() for i in missing), means.verb)
+                missing_str = pretty_list(i() for i in missing)
+                return f"You need {missing_str} to {means.verb}."
             else:
-                return "You fail to %s anything." % means.verb
+                return f"You fail to {means.verb} anything."
 
         pronoun = "them" if len(fruits) > 1 else "it"
-        return "You %s %s. You put %s into your %sbag." \
-               % (means.verb, pretty_list(fruits), pronoun, self.cmd_pfx)
+        fruits_str = pretty_list(fruits)
+        return f"You {means.verb} {fruits_str}. You put {pronoun} into your {self.cmd_pfx}bag."
 
     def wakeup(self, announce=None):  # called from dispatch
         if self.actor.alive:
@@ -619,18 +663,18 @@ class Chatflow(ActorMutator, HumanAttacks):
             return f"You fail to {method.verb} {self.actor.victim.name}."
 
 
-class StateSet(FilterSet):
-    def group_by_class(self):
-        return group_by_class(self)
+class CommoditySet(FilterSet):
+    empty_message = "Nothing to %s."
+
+    def get_display_list(self):
+        return list(group_by_class(self))
 
 
-class CommoditySet(StateSet):
-    pass
+class ActorSet(FilterSet):
+    empty_message = "Nobody to %s."
 
-
-class ActorSet(StateSet):
-    def group_by_class(self):
-        return group_by_class(self)
+    def get_display_list(self):
+        return list(group_by_class(self))
 
 
 class PlayerState(ActorState):
