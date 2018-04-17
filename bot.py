@@ -66,7 +66,7 @@ class PlayerBotRequest(BotRequest):
             return True
         return False
 
-    def get_new_keyboard(self):
+    def get_send_message_args(self):
         commands = self.get_commands()
         category = self.session.get("category")
         if category is None or category not in commands:
@@ -87,29 +87,22 @@ class PlayerBotRequest(BotRequest):
 
         keyboard_repr = repr(keyboard)
         if keyboard_repr == self.session.get('keyboard', 'None'):
-            return
-        self.session.set('keyboard', keyboard_repr)
-        return keyboard, category
-
-    def get_send_message_args(self):
-        keyboard = self.get_new_keyboard()
-        if keyboard:
-            keyboard, category = keyboard
-            reply_markup = telegram.ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-            flag_seen_player = False
-            for args in super().get_send_message_args():
-                if args["chat_id"] == self.message.chat_id:
-                    args.update(reply_markup=reply_markup)
-                    flag_seen_player = True
-                yield args
-
-            if not flag_seen_player:
-                yield dict(chat_id=self.chatkey, text=f"_Showing {category} commands._", reply_markup=reply_markup)
-
+            push = False
         else:
-            for args in super().get_send_message_args():
-                yield args
+            self.session.set('keyboard', keyboard_repr)
+            push = True
+
+        reply_markup = telegram.ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+        flag_seen_player = False
+        for args in super().get_send_message_args():
+            if args["chat_id"] == self.message.chat_id:
+                args.update(reply_markup=reply_markup)
+                flag_seen_player = True
+            yield args
+
+        if not flag_seen_player and push:
+            yield dict(chat_id=self.chatkey, text=f"_Showing {category} commands._", reply_markup=reply_markup)
 
 
 class Bot():
@@ -117,16 +110,12 @@ class Bot():
 
     def __init__(self, *args, **kwargs):
         self.bot = telegram.Bot(settings.TOKEN, *args, **kwargs)
-        # print self.bot.getWebhookInfo()
         session_storage = PlayerSessionsStorage()
         self.get_session = session_storage.get_session
 
-        # while self.reply_markups:
-        #     chat_id, reply_markup = self.reply_markups.popitem()
-        #     self.sendMessage(text=".", chat_id=chat_id, reply_markup=reply_markup)
-
     def set_webhook(self, *args, **kwargs):
-        return self.bot.setWebhook(*args, **kwargs)
+        self.bot.setWebhook(*args, **kwargs)
+        # print self.bot.getWebhookInfo()
 
     def get_bot_request(self):
         return BotRequest(self.bot)
