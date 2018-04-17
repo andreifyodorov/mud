@@ -117,8 +117,6 @@ class Bot():
 
     def __init__(self, *args, **kwargs):
         self.bot = telegram.Bot(settings.TOKEN, *args, **kwargs)
-        self.bot.setWebhook(url='https://%s/%s' % (settings.WEBHOOK_HOST, settings.TOKEN),
-                            certificate=open(settings.CERT, 'rb'))
         # print self.bot.getWebhookInfo()
         session_storage = PlayerSessionsStorage()
         self.get_session = session_storage.get_session
@@ -126,6 +124,9 @@ class Bot():
         # while self.reply_markups:
         #     chat_id, reply_markup = self.reply_markups.popitem()
         #     self.sendMessage(text=".", chat_id=chat_id, reply_markup=reply_markup)
+
+    def set_webhook(self, *args, **kwargs):
+        return self.bot.setWebhook(*args, **kwargs)
 
     def get_bot_request(self):
         return BotRequest(self.bot)

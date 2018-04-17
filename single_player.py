@@ -45,9 +45,9 @@ if __name__ == '__main__':
         migrate(storage)
 
     player = storage.get_player_state(PLAYER_CHATKEY)
-    # player.name = 'Andrey'
-    # player.bag.update([Shovel(), Mushroom(), RoughspunTunic()])
-    # Chatflow(player, storage.world).spawn(StartLocation)
+    player.name = 'Andrey'
+    player.bag.update([Shovel(), Mushroom(), RoughspunTunic()])
+    Chatflow(player, storage.world).spawn(StartLocation)
 
     observer = storage.get_player_state(OBSERVER_CHATKEY)
     observer.name = 'A silent observer'
@@ -60,8 +60,8 @@ if __name__ == '__main__':
     storage.world[Field.id].items.update([Vegetable(), Spindle()])
     storage.save()
 
-    # s = '/where'
-    s = '/start'
+    s = '/where'
+    # s = '/start'
     # s = '/restart'
     # s = '/look'
     # s = '/bag'

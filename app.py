@@ -10,12 +10,14 @@ import settings
 
 
 app = Flask(__name__)
+bot.set_webhook(
+    url=f"https://{settings.WEBHOOK_HOST}/{settings.TOKEN}",
+    certificate=open(settings.CERT, 'rb'))
 
 
 @app.route('/' + settings.TOKEN, methods=['POST'])
 def webhook():
     bot_request = bot.get_player_bot_request(request)
-
     if bot_request:
         storage = Storage(bot_request.send_callback_factory, cmd_pfx=bot.cmd_pfx)
         player = storage.get_player_state(bot_request.chatkey)
@@ -26,7 +28,6 @@ def webhook():
             chatflow.process_message(bot_request.message_text)
             storage.save()
         bot_request.send_messages()
-
     return b'OK'
 
 

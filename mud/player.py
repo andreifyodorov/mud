@@ -5,6 +5,7 @@ from .mutators import ActorMutator
 from .locations import StartLocation, Direction
 from .commodities import ActionClasses, DirtyRags, Weapon
 from .states import ActorState
+from .npcs import HumanNpcState
 from .utils import credits, list_sentence, pretty_list, group_by_class, FilterSet
 from .production import MeansOfProduction
 from .attacks import HumanAttacks
@@ -356,11 +357,14 @@ class Chatflow(ActorMutator, HumanAttacks):
             yield l, self.get_exit_command(l)
         yield 'where', lambda: self.where()
 
+    def ActorSet(self, iterable):
+        return ActorSet(iterable, perspective=self.actor)
+
     def get_look_command(self):
         return self.choice(
             'look',
             self.look,
-            ActorSet(self.others),
+            self.ActorSet(self.others),
             skip_single=True,
             prompt="whom to look at",
             empty_message=f'You look around and think, "There\'s no one here but {self.cmd_pfx}me".')
@@ -371,7 +375,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.barter,
 
             dict(arg='counterparty',
-                 bag=ActorSet(o for o in self.others if o.barters),
+                 bag=self.ActorSet(o for o in self.others if o.barters),
                  prompt="whom to barter with",
                  empty_message="There's no one here you can barter with.",
                  skip_single=True),
@@ -391,7 +395,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.sell,
 
             dict(arg='counterparty',
-                 bag=ActorSet(o for o in self.others if o.buys),
+                 bag=self.ActorSet(o for o in self.others if o.buys),
                  prompt="whom to sell to",
                  empty_message="There's no one here you can sell to.",
                  skip_single=True),
@@ -408,7 +412,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                 self.buy,
 
                 dict(arg='counterparty',
-                     bag=ActorSet(o for o in self.others if o.buys),
+                     bag=self.ActorSet(o for o in self.others if o.buys),
                      prompt="whom to buy from",
                      empty_message="There's no one here you can buy from.",
                      skip_single=True),
@@ -423,7 +427,7 @@ class Chatflow(ActorMutator, HumanAttacks):
         return self.choice(
             'attack',
             self.attack,
-            ActorSet(self.others),
+            self.ActorSet(self.others),
             prompt="whom to attack",
             empty_message="There's no one here you can attack.")
 
@@ -560,7 +564,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             yield f"On the ground you see {items_sentence}. " \
                   f"You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
 
-        others = ActorSet(self.others)
+        others = self.ActorSet(self.others)
         if others:
             if len(others) > 1:
                 yield "You see:"
@@ -673,8 +677,23 @@ class CommoditySet(FilterSet):
 class ActorSet(FilterSet):
     empty_message = "Nobody to %s."
 
+    def __init__(self, iterable, perspective):
+        super().__init__(iterable)
+        self.perspective = perspective
+
+    def sort_key(self, actor):
+        flags = (
+            actor.victim and actor.victim is self.perspective,
+            actor.victim is not None,
+            isinstance(actor, PlayerState),
+            isinstance(actor, HumanNpcState))
+        return tuple(not flag for flag in flags) + (actor.name_without_icon.lower(),)
+
     def get_display_list(self):
-        return list(group_by_class(self))
+        result = []
+        for actor in sorted(list(self), key=self.sort_key):
+            result.append((actor.name, actor))
+        return result
 
 
 class PlayerState(ActorState):

@@ -3,7 +3,7 @@ import pprint
 
 from mud.player import PlayerState, ActorSet, CommoditySet  # noqa: F401
 from mud.world import WorldState
-from mud.npcs import NpcState
+from mud.npcs import NpcState, HumanNpcState
 from mud.locations import Location
 from mud.production import MeansOfProduction
 from mud.commodities import Commodity
@@ -48,7 +48,7 @@ class PlayerSessionsStorage(RedisStorage):
 
 
 class Storage(RedisStorage):
-    entity_classes = (NpcState, Commodity, MeansOfProduction)  # order matters (refs)
+    entity_classes = (NpcState, HumanNpcState, Commodity, MeansOfProduction)  # order matters (refs)
 
     _player_key = "player:%s"
     _location_key = "location:%s"

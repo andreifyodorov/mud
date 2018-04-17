@@ -70,6 +70,10 @@ class NpcState(ActorState):
         return self.mutator_class(self, world)
 
 
+class HumanNpcState(NpcState):
+    pass
+
+
 class PeasantMutator(NpcMutator, HumanAttacks):
     default_wear = RoughspunTunic
 
@@ -135,7 +139,7 @@ class PeasantMutator(NpcMutator, HumanAttacks):
                 self.produce(field)
 
 
-class PeasantState(NpcState):
+class PeasantState(HumanNpcState):
     mutator_class = PeasantMutator
     abstract_name = "a peasant"
     definite_name = "the peasant"  # "Jack the peasant"
@@ -161,7 +165,7 @@ class GuardMutator(NpcMutator, HumanAttacks):
         return True
 
 
-class GuardState(NpcState):
+class GuardState(HumanNpcState):
     mutator_class = GuardMutator
     abstract_name = 'a guard'
     icon = '👮'
@@ -171,7 +175,7 @@ class MerchantMutator(NpcMutator, HumanAttacks):
     default_wear = FlamboyantAttire
 
 
-class MerchantState(NpcState):
+class MerchantState(HumanNpcState):
     mutator_class = MerchantMutator
     abstract_name = 'a merchant'
     icon = '🤵'
