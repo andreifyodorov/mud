@@ -170,7 +170,7 @@ class Storage(RedisStorage):
             elif cls == 'PlayerState':
                 return self.get_player_state(arg)
             elif cls in {'FilterSet', 'ActorSet', 'CommoditySet'}:
-                return eval(cls)(self.deserialize(arg))
+                return self.deserialize(arg)
             else:
                 return self.get_entity_state(cls, arg)
         elif isinstance(v, list):
@@ -214,8 +214,6 @@ class Storage(RedisStorage):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
-        elif isinstance(o, FilterSet):
-            return (o.__class__.__name__, self.serialize(set(o)))
         elif isinstance(o, self.entity_classes):
             return self.serialize_entity(o)
         elif isinstance(o, list):
