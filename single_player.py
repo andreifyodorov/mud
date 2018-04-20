@@ -47,7 +47,7 @@ if __name__ == '__main__':
     player = storage.get_player_state(PLAYER_CHATKEY)
     player.name = 'Andrey'
     player.bag.update([Shovel(), Mushroom(), RoughspunTunic()])
-    Chatflow(player, storage.world).spawn(StartLocation)
+    Chatflow(player, storage.world).start()
 
     observer = storage.get_player_state(OBSERVER_CHATKEY)
     observer.name = 'A silent observer'
@@ -59,6 +59,7 @@ if __name__ == '__main__':
 
     storage.world[Field.id].items.update([Vegetable(), Spindle()])
     storage.save()
+    current_dump = dict(storage.dump())
 
     s = '/where'
     # s = '/start'
@@ -82,17 +83,21 @@ if __name__ == '__main__':
             s = cmds.pop(0)
             print(f"> {s}")
 
-        current_dump = dict(storage.dump())
+        storage = Storage(send_callback_factory, redis=redis, cmd_pfx=cmd_pfx)
+
         if not s or s == "--":
             storage.world.enact()
             observe("World time: %d" % storage.world.time)
         else:
-            chatflow = Chatflow(player, storage.world, cmd_pfx=cmd_pfx)
+            chatflow = Chatflow(storage.get_player_state(PLAYER_CHATKEY), storage.world, cmd_pfx=cmd_pfx)
             chatflow.process_message(s)
 
+        storage.save()
+        new_dump = dict(storage.dump())
         print(fore.DARK_GRAY
-              + pprint.pformat(DeepDiff(current_dump, dict(storage.dump()), verbose_level=2), width=120)
+              + pprint.pformat(DeepDiff(current_dump, new_dump, verbose_level=2), width=120)
               + style.RESET)
+        current_dump = new_dump
 
         print(fore.DARK_GREEN
               + repr(
