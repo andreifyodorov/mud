@@ -7,7 +7,6 @@ from mud.npcs import NpcState, HumanNpcState
 from mud.locations import Location
 from mud.production import MeansOfProduction
 from mud.commodities import Commodity
-from mud.utils import FilterSet
 
 import settings
 
@@ -155,30 +154,34 @@ class Storage(RedisStorage):
 
     def deserialize_state(self, state, data):
         for k, v in data.items():
-            o = self.deserialize(v)
+            o = self.deserialize(v, perspective=state)
             attr = getattr(state, k, None)
             if attr is not None and hasattr(attr, 'update'):
                 attr.update(o)
             else:
                 setattr(state, k, o)
 
-    def deserialize(self, v):
+    def deserialize(self, v, perspective=None):
         if isinstance(v, tuple):
             cls, arg = v
             if cls == 'Location':
                 return Location.all[arg]
             elif cls == 'PlayerState':
                 return self.get_player_state(arg)
-            elif cls in {'FilterSet', 'ActorSet', 'CommoditySet'}:
-                return self.deserialize(arg)
+            elif cls in {'ActorSet', 'CommoditySet'}:
+                iterable = self.deserialize(arg, perspective)
+                if cls == 'ActorSet':
+                    return ActorSet(iterable, perspective)
+                else:
+                    return eval(cls)(iterable)
             else:
                 return self.get_entity_state(cls, arg)
         elif isinstance(v, list):
-            return [self.deserialize(o) for o in v]
+            return [self.deserialize(o, perspective) for o in v]
         elif isinstance(v, dict):
             deserialized = {}
             for key, val in v.items():
-                deserialized[self.deserialize(key)] = self.deserialize(val)
+                deserialized[self.deserialize(key)] = self.deserialize(val, perspective)
             return deserialized
         else:
             return v
@@ -214,6 +217,8 @@ class Storage(RedisStorage):
             return ('Location', o.id)
         elif isinstance(o, PlayerState):
             return ('PlayerState', self.chatkeys[o])
+        elif isinstance(o, (ActorSet, CommoditySet)):
+            return (o.__class__.__name__, self.serialize(set(o)))
         elif isinstance(o, self.entity_classes):
             return self.serialize_entity(o)
         elif isinstance(o, list):
