@@ -115,3 +115,13 @@ def group_by_class(items):
 class FilterSet(set):
     def filter(self, cls):
         return (i for i in self if isinstance(i, cls))
+
+    def __str__(self):
+        return pretty_list(self)
+
+
+class Verb(str):
+    def __new__(cls, value, third):
+        self = super().__new__(cls, value)
+        self.third = third
+        return self

@@ -1,7 +1,14 @@
 import collections
 from itertools import chain
 
-from .mutators import ActorMutator
+from .mutators import (
+    GoAction,
+    RelocateItemsAction,
+    PickAction,
+    DropAction,
+    # EatAction,
+    ActorMutator
+)
 from .locations import StartLocation, Direction
 from .commodities import ActionClasses, DirtyRags, Weapon
 from .states import ActorState
@@ -94,7 +101,7 @@ class ChoiceHandler(InputHandler):
             return self.bag
 
         item = None
-        if self.skip_single and len(self.bag) == 1:
+        if self.skip_single and "bag" not in self.state and len(self.bag) == 1:
             item = self.bag.pop()
             self.state.clear()  # skip_single won't trigger regular clean up
 
@@ -240,6 +247,9 @@ class ConfirmationHandler(InputHandler):
 
 
 class Chatflow(ActorMutator, HumanAttacks):
+    def __init__(self, actor, world, cmd_pfx=None, *args, **kwargs):
+        super().__init__(actor, world, *args, **kwargs)
+        self.cmd_pfx = cmd_pfx or CommandPrefix()
 
     class UnknownChatflowCommand(Exception):
         pass
@@ -249,9 +259,8 @@ class Chatflow(ActorMutator, HumanAttacks):
         'active': {False: ("falls asleep.", "fall asleep."), 'first': ("wakes up.", "wake up.")}
     }
 
-    def __init__(self, actor, world, cmd_pfx=None):
-        super(Chatflow, self).__init__(actor, world)
-        self.cmd_pfx = cmd_pfx or CommandPrefix()
+    def get_action(self, cls, **kwargs):
+        return super().get_action(cls, cmd_pfx=self.cmd_pfx, **kwargs)
 
     def process_message(self, text):
         tokens = self.tokenize(text)
@@ -298,18 +307,6 @@ class Chatflow(ActorMutator, HumanAttacks):
         elif isinstance(result, collections.Iterable):
             self.actor.send("\n".join(result))
 
-    def input(self, cmd, f, prompt):
-        return InputHandler(self.actor.input, cmd, f, prompt, cmd_pfx=self.cmd_pfx)
-
-    def choice(self, cmd, f, bag, **kwargs):
-        return ChoiceHandler(self.actor.input, cmd, f, bag, cmd_pfx=self.cmd_pfx, **kwargs)
-
-    def choice_chain(self, cmd, f, *steps):
-        return ChoiceChainHandler(self.actor.chain, self.actor.input, cmd, f, steps, self.cmd_pfx)
-
-    def confirmation(self, cmd, f, prompt):
-        return ConfirmationHandler(self.actor.input, cmd, f, prompt, self.cmd_pfx)
-
     def get_commands_by_category(self):
         if self.actor.alive:
             return collections.OrderedDict(
@@ -341,30 +338,16 @@ class Chatflow(ActorMutator, HumanAttacks):
         yield 'me', self.get_me_command()
         yield 'help', self.help
 
-    def get_exit_command(self, l):
-        def exit():
-            if l in self.actor.location.exits:
-                return self.go(l)
-            else:
-                if l in Direction.compass:
-                    return f"You can't go {l} from here."
-                else:
-                    return f"You can't {l} here."
-        return exit
-
     def get_location_commands(self):
-        for l in Direction.all:
-            yield l, self.get_exit_command(l)
-        yield 'where', lambda: self.where()
-
-    def ActorSet(self, iterable):
-        return ActorSet(iterable, perspective=self.actor)
+        for direction in Direction.all:
+            yield direction, getattr(self, direction)
+        yield 'where', self.where
 
     def get_look_command(self):
         return self.choice(
             'look',
             self.look,
-            self.ActorSet(self.others),
+            self.get_actor_set(self.others),
             skip_single=True,
             prompt="whom to look at",
             empty_message=f'You look around and think, "There\'s no one here but {self.cmd_pfx}me".')
@@ -375,7 +358,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.barter,
 
             dict(arg='counterparty',
-                 bag=self.ActorSet(o for o in self.others if o.barters),
+                 bag=self.get_actor_set(o for o in self.others if o.barters),
                  prompt="whom to barter with",
                  empty_message="There's no one here you can barter with.",
                  skip_single=True),
@@ -395,7 +378,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             self.sell,
 
             dict(arg='counterparty',
-                 bag=self.ActorSet(o for o in self.others if o.buys),
+                 bag=self.get_actor_set(o for o in self.others if o.buys),
                  prompt="whom to sell to",
                  empty_message="There's no one here you can sell to.",
                  skip_single=True),
@@ -412,7 +395,7 @@ class Chatflow(ActorMutator, HumanAttacks):
                 self.buy,
 
                 dict(arg='counterparty',
-                     bag=self.ActorSet(o for o in self.others if o.buys),
+                     bag=self.get_actor_set(o for o in self.others if o.buys),
                      prompt="whom to buy from",
                      empty_message="There's no one here you can buy from.",
                      skip_single=True),
@@ -427,7 +410,7 @@ class Chatflow(ActorMutator, HumanAttacks):
         return self.choice(
             'attack',
             self.attack,
-            self.ActorSet(self.others),
+            self.get_actor_set(self.others),
             prompt="whom to attack",
             empty_message="There's no one here you can attack.")
 
@@ -447,22 +430,6 @@ class Chatflow(ActorMutator, HumanAttacks):
             for attack in attacks:
                 yield attack.verb, lambda: self.kick(attack)
 
-    def get_pick_command(self):
-        return self.choice(
-            'pick',
-            self.pick,
-            CommoditySet(self.location.items),
-            skip_single=True,
-            select_subset=True)
-
-    def get_drop_command(self):
-        return self.choice(
-            'drop',
-            self.drop,
-            CommoditySet(self.actor.bag),
-            select_subset=True,
-            empty_message="Your bag is already empty.")
-
     def get_commodity_action_command(self, cls):
         return self.choice(
             cls.verb,
@@ -473,15 +440,9 @@ class Chatflow(ActorMutator, HumanAttacks):
 
     def get_inventory_commands(self):
         yield 'bag', self.bag
-
-        if self.location.items:
-            yield 'pick', self.get_pick_command()
-            yield 'collect', lambda: self.pick(self.location.items)
-        else:
-            for cmd in ('pick', 'collect'):
-                yield cmd, 'There is nothing on the ground that you can pick up.'
-
-        yield 'drop', self.get_drop_command()
+        yield 'collect', self.collect
+        yield 'pick', self.pick
+        yield 'drop', self.drop
 
         for cls in ActionClasses.__subclasses__():
             yield cls.verb, self.get_commodity_action_command(cls)
@@ -491,6 +452,74 @@ class Chatflow(ActorMutator, HumanAttacks):
     def get_production_commands(self):
         for cls in MeansOfProduction.__subclasses__():
             yield cls.verb, lambda: self.produce(cls)
+
+    def input(self, cmd, f, prompt):
+        return InputHandler(self.actor.input, cmd, f, prompt, cmd_pfx=self.cmd_pfx)
+
+    def choice(self, cmd, f, bag, **kwargs):
+        return ChoiceHandler(self.actor.input, cmd, f, bag, cmd_pfx=self.cmd_pfx, **kwargs)
+
+    def choice_chain(self, cmd, f, *steps):
+        return ChoiceChainHandler(self.actor.chain, self.actor.input, cmd, f, steps, self.cmd_pfx)
+
+    def confirmation(self, cmd, f, prompt):
+        return ConfirmationHandler(self.actor.input, cmd, f, prompt, self.cmd_pfx)
+
+    def get_actor_set(self, iterable):
+        return ActorSet(iterable, perspective=self.actor)
+
+    def where(self, verb=None):
+        actor = self.actor
+        location = actor.location
+        last_location = actor.last_location
+
+        if not verb:
+            verb = ("are still" if last_location and location.descr == last_location.descr
+                    else "are")
+
+        actor.last_location = location
+        yield f"You {verb} {location.descr}"
+
+        for means in self.location.means:
+            yield means.descr % (self.cmd_pfx + means.verb)
+
+        for descr, directions in location.get_exit_groups():
+            directions = (self.cmd_pfx + d for d in directions)
+            yield descr % list_sentence(directions)
+
+        if len(self.location.items) == 1:
+            for item in self.location.items:
+                yield f"On the ground you see {item.name}. You can {self.cmd_pfx}pick it up."
+        elif len(self.location.items) > 1:
+            items_sentence = pretty_list(self.location.items)
+            yield f"On the ground you see {items_sentence}. " \
+                  f"You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
+
+        others = self.get_actor_set(self.others)
+        if others:
+            if len(others) > 1:
+                yield "You see:"
+                for name, actor in others.get_display_list():
+                    yield f"  • {actor.get_full_descr(self.actor)}"
+            else:
+                actor, = others
+                yield f"You see {actor.get_full_descr(self.actor)}."
+
+            actions = [f'take a closer {self.cmd_pfx}look at them']
+
+            if any(a.barters for a in others):
+                actions.append(f'{self.cmd_pfx}barter')
+
+            if any(a.sells for a in others):
+                actions.append(f'{self.cmd_pfx}buy')
+
+            if any(a.buys for a in others):
+                actions.append(f'{self.cmd_pfx}sell')
+
+            actions.append(f'{self.cmd_pfx}attack')
+
+            actions_sentence = list_sentence(actions, glue="or")
+            yield f"You can {actions_sentence}."
 
     def welcome(self):
         yield "Hello and welcome to this little MUD game."
@@ -537,66 +566,6 @@ class Chatflow(ActorMutator, HumanAttacks):
             if actor.wields:
                 yield "%s wields %s." % (actor.Name, actor.wields.descr)
 
-    def where(self, verb=None):
-        actor = self.actor
-        location = actor.location
-        last_location = actor.last_location
-
-        if not verb:
-            verb = ("are still" if last_location and location.descr == last_location.descr
-                    else "are")
-
-        actor.last_location = location
-        yield f"You {verb} {location.descr}"
-
-        for means in self.location.means:
-            yield means.descr % (self.cmd_pfx + means.verb)
-
-        for descr, directions in location.get_exit_groups():
-            directions = (self.cmd_pfx + d for d in directions)
-            yield descr % list_sentence(directions)
-
-        if len(self.location.items) == 1:
-            for item in self.location.items:
-                yield f"On the ground you see {item.name}. You can {self.cmd_pfx}pick it up."
-        elif len(self.location.items) > 1:
-            items_sentence = pretty_list(self.location.items)
-            yield f"On the ground you see {items_sentence}. " \
-                  f"You can {self.cmd_pfx}pick or {self.cmd_pfx}collect them all."
-
-        others = self.ActorSet(self.others)
-        if others:
-            if len(others) > 1:
-                yield "You see:"
-                for name, actor in others.get_display_list():
-                    yield f"  • {actor.get_full_descr(self.actor)}"
-            else:
-                actor, = others
-                yield f"You see {actor.get_full_descr(self.actor)}."
-
-            actions = [f'take a closer {self.cmd_pfx}look at them']
-
-            if any(a.barters for a in others):
-                actions.append(f'{self.cmd_pfx}barter')
-
-            if any(a.sells for a in others):
-                actions.append(f'{self.cmd_pfx}buy')
-
-            if any(a.buys for a in others):
-                actions.append(f'{self.cmd_pfx}sell')
-
-            actions.append(f'{self.cmd_pfx}attack')
-
-            actions_sentence = list_sentence(actions, glue="or")
-            yield f"You can {actions_sentence}."
-
-    def go(self, direction):
-        if super().go(direction):
-            return self.where()
-
-    def pick(self, item_or_items):
-        super().pick(item_or_items, announce=lambda items_str: f'put {items_str} into your {self.cmd_pfx}bag.')
-
     def unequip(self):
         if not self.actor.wields:
             return "You aren't wielding anything."
@@ -630,7 +599,7 @@ class Chatflow(ActorMutator, HumanAttacks):
             return f"You can't {means_cls.verb} anything here."
 
         missing = list()
-        fruits = super(Chatflow, self).produce(means, missing)
+        fruits = super().produce(means, missing)
 
         if not fruits:
             if missing:
@@ -656,7 +625,7 @@ class Chatflow(ActorMutator, HumanAttacks):
         methods = (f"{m} with {self.actor.weapon.name}" if m.is_weapon_method else m for m in methods)
         methods = (f"{self.cmd_pfx}{m}" for m in methods)
         attacks_sentence = list_sentence(methods, glue="or")
-        super(Chatflow, self).attack(whom, f'attack {whom.name}. You can {attacks_sentence}.')
+        super().attack(whom, f'attack {whom.name}. You can {attacks_sentence}.')
 
     def kick(self, method):
         weapon = self.actor.weapon
@@ -665,6 +634,100 @@ class Chatflow(ActorMutator, HumanAttacks):
             return f"You can't {method.verb} with {with_}."
         if not super().kick(method):
             return f"You fail to {method.verb} {self.actor.victim.name}."
+
+
+class PlayerAction(Chatflow):
+    @classmethod
+    def from_mutator(cls, mutator, *args):
+        return cls(*args, mutator.actor, mutator.world, mutator.cmd_pfx)
+
+
+@Chatflow.actions(Direction.all)
+class GoPlayerAction(PlayerAction, GoAction):
+    def __init__(self, direction, *args):
+        self.verb = direction
+        super().__init__(*args)
+
+    @property
+    def is_available(self):
+        return self.verb in self.get_args()
+
+    def error_unavailable(self):
+        if self.verb in Direction.compass:
+            return f"You can't go {self.direction} from here."
+        else:
+            return f"You can't {self.direction} here."
+
+    def mutate(self):
+        if super().mutate(self.verb):
+            return self.where()
+
+
+class ChooseCommodityAction(RelocateItemsAction):
+    @property
+    def after_checks(self):
+        return self.choice(
+            self.verb,
+            super().after_checks,
+            CommoditySet(self.get_args()),
+            skip_single=self.skip_single,
+            select_subset=True)
+
+
+class BasePickPlayerAction(PlayerAction, PickAction):
+    skip_single = True
+
+    def error_unavailable(self, *args):
+        return 'There is nothing on the ground that you can pick up.'
+
+    def on_done(self, items):
+        return f"You put {items} into your {self.cmd_pfx}bag."
+
+
+@Chatflow.action("pick")
+class PickPlayerAction(BasePickPlayerAction, ChooseCommodityAction):
+    pass
+
+
+@Chatflow.action("collect")
+class CollectPlayerAction(BasePickPlayerAction):
+    def mutate(self):
+        return super().mutate(self.source)
+
+
+@Chatflow.action("drop")
+class DropPlayerAction(PlayerAction, ChooseCommodityAction, DropAction):
+    skip_single = False  # we want a user to confirm a toss
+
+    def error_unavailable(self, *args):
+        return 'Your bag is already empty.'
+
+    def on_done(self, items):
+        return f'You drop {items} on the ground.'
+
+
+# class CollectPlayerAction(PlayerMutator, PickMessages, PickAction):
+#     def __call__(self):
+#         return super().__call__(self.location.items) if self.is_available else self.empty_message
+#
+#
+# class DropPlayerAction(PlayerMutator, DropAction):
+#     @property
+#     def __call__(self):
+#         return self.choice(
+#             'drop',
+#             super().__call__,
+#             CommoditySet(self.actor.bag),
+#             select_subset=True,
+#             empty_message="Your bag is already empty.")
+#
+#     def success(self, items_str):
+#         return super().success(items_str, f'drop {items_str} on the ground.')
+#
+#
+# class CommodityPlayerAction(PlayerMutator, EatAction):
+#     def success(self, items_str):
+#         return super().success(items_str, f'eat {items_str}.')
 
 
 class CommoditySet(FilterSet):

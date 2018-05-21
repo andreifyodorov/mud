@@ -150,6 +150,15 @@ class PeasantState(HumanNpcState):
         return len(self.bag) > 0
 
 
+"""
+- I can give you a spindle if you give me something in exchange.
+- Sometimes you can find cotton in the fields.
+- The woods are not too bushy but you can get lost deeper in the forest.
+- There are mushrooms in the forest.
+- ...
+"""
+
+
 class GuardMutator(NpcMutator, HumanAttacks):
     default_wear = Overcoat
 

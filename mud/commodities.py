@@ -1,6 +1,6 @@
 from .attacks import Bash
 from .states import State
-from .utils import condition
+from .utils import condition, Verb
 
 
 class Commodity(State):
@@ -18,11 +18,13 @@ class Commodity(State):
 
 
 class ActionClasses(object):
-    pass
+    @classmethod
+    def all(cls):
+        return cls.__subclasses__()
 
 
 class Edibles(ActionClasses):
-    verb = 'eat'
+    verb = Verb('eat', third='eats')
 
 
 class Vegetable(Commodity, Edibles):
@@ -44,7 +46,7 @@ class Cotton(Commodity):
 
 
 class Wieldables(ActionClasses):
-    verb = 'wield'
+    verb = Verb('wield', third='wields')
 
 
 class Deteriorates(object):
@@ -133,7 +135,7 @@ class Shovel(Deteriorates, Commodity, Wieldables, Weapon):
 
 
 class Wearables(ActionClasses):
-    verb = 'wear'
+    verb = Verb('wear', third='wears')
 
 
 class DirtyRags(Commodity, Wearables):

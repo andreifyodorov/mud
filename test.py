@@ -9,7 +9,7 @@ from migrate import migrations
 from mud.player import CommandPrefix
 from mud.commodities import Vegetable, Mushroom, Cotton, Spindle, Shovel, DirtyRags, RoughspunTunic
 from mud.npcs import PeasantState, RatState
-from mud.locations import Field
+from mud.locations import Direction, Field
 from mud.attacks import Kick, Punch, Bash
 
 
@@ -19,6 +19,7 @@ class MockSendMessage(object):
 
     def send_callback_factory(self, chatkey):
         def callback(msg):
+            # print(msg)
             self.messages.append(msg)
         return callback
 
@@ -98,12 +99,15 @@ class ChatflowTestCase(unittest.TestCase):
             self.assertRegex(messages, pattern)
 
     def send(self, cmd):
+        # print(f"> {cmd}")
         self.chatflow.process_message(cmd)
 
-    def cycle(self, loop, cond, error_message, max_cycles=100):
+    def cycle(self, loop, cond, error_message, max_cycles=100, debug=None):
         i = 0
         while i < max_cycles:
             loop()
+            if callable(debug):
+                print(debug())
             if cond():
                 break
             i += 1
@@ -150,6 +154,48 @@ class ChatflowTestCase(unittest.TestCase):
             self.chatflow.act()
         self.assertTrue(self.player.recieves_announces)
 
+    def test_021_pick_drop_collect(self):
+        self.send("#drop")
+        self.assertReplyContains("already empty")
+
+        self.send("#pick")
+        self.assertReplyContains("nothing on the ground")
+
+        self.send("#collect")
+        self.assertReplyContains("nothing on the ground")
+
+        veg = Vegetable()
+        self.chatflow.location.items.add(veg)
+
+        self.send("#pick")
+        self.assertReplyContains("You put")
+        self.assertTrue(veg in self.player.bag)
+
+        self.send("#drop")
+        self.send(self.get_option("vegetable"))
+        self.assertReplyContains("You drop")
+
+        self.chatflow.location.items.add(Mushroom())
+        self.send("#pick")
+        self.chatflow.location.items.clear()  # someone took everything
+        self.send(self.get_option("vegetable"))
+        self.assertReplyContains("nothing on the ground")
+
+        self.chatflow.location.items.add(veg)
+        self.chatflow.location.items.add(Mushroom())
+        self.send("#pick")
+        self.chatflow.location.items.remove(veg)  # someone took it
+        self.send(self.get_option("vegetable"))
+        self.assertReplyContains("You put nothing")
+        self.chatflow.location.items.clear()
+        self.player.bag.clear()
+
+    def test_022_moving_around(self):
+        self.send("#north")
+        self.assertReplyContains("You are", "village")
+        self.send("#south")
+        self.assertReplyContains("You are", "field")
+
     def test_025_field(self):
         self.send("#where")
         self.assertReplyContains('#farm')
@@ -179,6 +225,9 @@ class ChatflowTestCase(unittest.TestCase):
     def test_03_peasant_ai(self):
         peasant, = self.chatflow.location.actors.filter(PeasantState)
         mutator = peasant.get_mutator(self.world)
+
+        self.assertTrue(mutator.go.is_available)
+        self.assertCountEqual(mutator.go.get_args(), Direction.compass)
 
         self.send('#drop')
         self.send(self.get_option("vegetable"))
@@ -222,6 +271,7 @@ class ChatflowTestCase(unittest.TestCase):
 
         self.send('#exit')
         self.send('#south')
+        self.assertIs(Field, self.player.location)
 
         self.cycle(
             self.world.enact,
