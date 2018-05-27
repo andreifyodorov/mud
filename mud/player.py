@@ -3,7 +3,7 @@ from itertools import chain
 
 from . import mutators
 from .locations import StartLocation, Direction
-from .commodities import ActionClasses, DirtyRags, Weapon
+from .commodities import ActionClasses, Edibles, Wearables, Wieldables, DirtyRags, Weapon
 from .states import ActorState
 from .npcs import HumanNpcState
 from .utils import credits, list_sentence, pretty_list, group_by_class, FilterSet
@@ -628,9 +628,9 @@ class PlayerAction(Chatflow):
 
 @Chatflow.actions(Direction.all)
 class GoPlayerAction(PlayerAction, mutators.GoAction):
-    def __init__(self, direction, *args):
-        self.verb = direction
+    def __init__(self, verb, *args):
         super().__init__(*args)
+        self.verb = verb
 
     @property
     def is_available(self):
@@ -638,9 +638,9 @@ class GoPlayerAction(PlayerAction, mutators.GoAction):
 
     def error_unavailable(self):
         if self.verb in Direction.compass:
-            return f"You can't go {self.direction} from here."
+            return f"You can't go {self.verb} from here."
         else:
-            return f"You can't {self.direction} here."
+            return f"You can't {self.verb} here."
 
     def mutate(self):
         if super().mutate(self.verb):
@@ -694,21 +694,16 @@ class ItemPlayerAction(PlayerAction, ChooseCommodityAction):
     skip_single = True
 
     def on_done(self, item):
-        return f'You {self.action_cls.verb} {item.name}.'
+        return f'You {self.verb} {item.name}.'
 
 
-@Chatflow.action(mutators.EatAction.verb)
+@Chatflow.action(Edibles.verb)
 class EatPlayerAction(ItemPlayerAction, mutators.EatAction):
     pass
 
 
-@Chatflow.action(mutators.WearAction.verb)
-class WearPlayerAction(ItemPlayerAction, mutators.WearAction):
-    pass
-
-
-@Chatflow.action(mutators.WieldAction.verb)
-class WieldPlayerAction(ItemPlayerAction, mutators.WieldAction):
+@Chatflow.actions((Wearables, Wieldables))
+class ItemToSlotPlayerAction(mutators.ItemToSlotAction, ItemPlayerAction):  # order matters for __init__
     pass
 
 

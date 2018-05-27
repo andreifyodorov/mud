@@ -33,10 +33,11 @@ class ActorMutator:
         return decorator
 
     @classmethod
-    def actions(cls, action_names):
+    def actions(cls, args):
         def decorator(action_cls):
-            for action_name in action_names:
-                setattr(cls, action_name, lazy_action(action_cls, action_name))
+            for arg in args:
+                verb = getattr(arg, 'verb', arg)
+                setattr(cls, verb, lazy_action(action_cls, arg))
             return action_cls
         return decorator
 
@@ -436,7 +437,7 @@ class Action(ActorMutator):
 
     @classmethod
     def from_mutator(cls, mutator, *args):
-        return cls(*args, actor=mutator.actor, world=mutator.world)
+        return cls(*args, mutator.actor, mutator.world)
 
 
 class ActionWithArgs(Action):
@@ -511,10 +512,6 @@ class DropAction(RelocateItemsAction):
 
 class ItemAction(RelocateAction):
     @property
-    def action_cls(self):
-        raise NotImplementedError
-
-    @property
     def source(self):
         return self.actor.bag
 
@@ -529,7 +526,7 @@ class ItemAction(RelocateAction):
             return self.error_wrong_class
 
     def on_success(self, item):
-        self.announce(f'{self.action_cls.verb.third} {item.name}.')
+        self.announce(f'{self.verb.third} {item.name}.')
 
 
 @ActorMutator.action(Edibles.verb)
@@ -547,20 +544,16 @@ class EatAction(ItemAction, RelocateItemsAction):
             self.set_cooldown('high', 5)
 
 
+@ActorMutator.actions((Wearables, Wieldables))
 class ItemToSlotAction(ItemAction, RelocateAction):
+    def __init__(self, action_cls, *args):
+        super().__init__(*args)
+        self.action_cls = action_cls
+        self.verb = action_cls.verb
+
     def mutate(self, item):
         if self._relocate_to_slot(self.verb.third, item):
             return item
-
-
-@ActorMutator.action(Wearables.verb)
-class WearAction(ItemToSlotAction):
-    action_cls = Wearables
-
-
-@ActorMutator.action(Wieldables.verb)
-class WieldAction(ItemToSlotAction):
-    action_cls = Wieldables
 
 
 @ActorMutator.action("unequip")

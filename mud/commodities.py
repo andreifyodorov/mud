@@ -18,9 +18,7 @@ class Commodity(State):
 
 
 class ActionClasses(object):
-    @classmethod
-    def all(cls):
-        return cls.__subclasses__()
+    pass
 
 
 class Edibles(ActionClasses):

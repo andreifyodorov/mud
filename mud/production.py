@@ -1,4 +1,5 @@
 from .commodities import Vegetable, Cotton, Spindle, RoughspunTunic, Shovel
+from .utils import Verb
 from random import uniform
 
 
@@ -11,7 +12,7 @@ def weighted_choice(d):
         r -= w
 
 
-class MeansOfProduction(object):
+class MeansOfProduction:
     optional_tools = set()
     required_tools = set()
     required_materials = {}
@@ -19,7 +20,7 @@ class MeansOfProduction(object):
 
 class Land(MeansOfProduction):
     descr = "The land seems arable to %s."
-    verb = 'farm'
+    verb = Verb('farm', third='farms')
     optional_tools = {Shovel}
 
     def get_product(self):
@@ -35,7 +36,7 @@ class Land(MeansOfProduction):
 
 class Distaff(MeansOfProduction):
     descr = "There's a distaff in the corner. You can %s a yarn."
-    verb = 'spin'
+    verb = Verb('spin', third="spins")
 
     required_tools = {Spindle}
     required_materials = {Cotton: 2}
@@ -46,7 +47,7 @@ class Distaff(MeansOfProduction):
 
 class Workbench(MeansOfProduction):
     descr = "There's a workbench. You can %s something useful."
-    verb = 'make'
+    verb = Verb('make', third="makes")
 
     def produce(self, tools, materials):
         return Shovel()
