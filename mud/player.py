@@ -1,14 +1,7 @@
 import collections
 from itertools import chain
 
-from .mutators import (
-    GoAction,
-    RelocateItemsAction,
-    PickAction,
-    DropAction,
-    # EatAction,
-    ActorMutator
-)
+from . import mutators
 from .locations import StartLocation, Direction
 from .commodities import ActionClasses, DirtyRags, Weapon
 from .states import ActorState
@@ -96,6 +89,9 @@ class ChoiceHandler(InputHandler):
             yield f"{self.cmd_pfx}{n + 1:d}. {caption}"
 
     def _modify_arg(self, arg):
+        if arg in self.bag:
+            return arg
+
         arg = self.cmd_pfx.get_cmd(arg, arg)
         if self.select_subset and arg == 'all':
             return self.bag
@@ -246,7 +242,7 @@ class ConfirmationHandler(InputHandler):
             return False
 
 
-class Chatflow(ActorMutator, HumanAttacks):
+class Chatflow(mutators.ActorMutator, HumanAttacks):
     def __init__(self, actor, world, cmd_pfx=None, *args, **kwargs):
         super().__init__(actor, world, *args, **kwargs)
         self.cmd_pfx = cmd_pfx or CommandPrefix()
@@ -430,24 +426,17 @@ class Chatflow(ActorMutator, HumanAttacks):
             for attack in attacks:
                 yield attack.verb, lambda: self.kick(attack)
 
-    def get_commodity_action_command(self, cls):
-        return self.choice(
-            cls.verb,
-            lambda item: getattr(self, cls.verb)(item),
-            CommoditySet(self.actor.bag.filter(cls)),
-            empty_message="You have nothing you can %s." % cls.verb,
-            skip_single=True)
-
     def get_inventory_commands(self):
         yield 'bag', self.bag
-        yield 'collect', self.collect
-        yield 'pick', self.pick
-        yield 'drop', self.drop
+        yield self.collect.verb, self.collect
+        yield self.pick.verb, self.pick
+        yield self.drop.verb, self.drop
 
         for cls in ActionClasses.__subclasses__():
-            yield cls.verb, self.get_commodity_action_command(cls)
+            if hasattr(self, cls.verb):
+                yield cls.verb, getattr(self, cls.verb)
 
-        yield 'unequip', self.unequip
+        yield self.unequip.verb, self.unequip
 
     def get_production_commands(self):
         for cls in MeansOfProduction.__subclasses__():
@@ -566,11 +555,6 @@ class Chatflow(ActorMutator, HumanAttacks):
             if actor.wields:
                 yield "%s wields %s." % (actor.Name, actor.wields.descr)
 
-    def unequip(self):
-        if not self.actor.wields:
-            return "You aren't wielding anything."
-        super().unequip(announce=lambda item: f"put {item.name} back into your {self.cmd_pfx}bag.")
-
     def bag(self):
         if not self.bag:
             yield f'Your bag is empty. You have {credits(self.actor.credits)}.'
@@ -643,7 +627,7 @@ class PlayerAction(Chatflow):
 
 
 @Chatflow.actions(Direction.all)
-class GoPlayerAction(PlayerAction, GoAction):
+class GoPlayerAction(PlayerAction, mutators.GoAction):
     def __init__(self, direction, *args):
         self.verb = direction
         super().__init__(*args)
@@ -663,7 +647,7 @@ class GoPlayerAction(PlayerAction, GoAction):
             return self.where()
 
 
-class ChooseCommodityAction(RelocateItemsAction):
+class ChooseCommodityAction(mutators.Action):
     @property
     def after_checks(self):
         return self.choice(
@@ -674,7 +658,7 @@ class ChooseCommodityAction(RelocateItemsAction):
             select_subset=True)
 
 
-class BasePickPlayerAction(PlayerAction, PickAction):
+class BasePickPlayerAction(PlayerAction, mutators.PickAction):
     skip_single = True
 
     def error_unavailable(self, *args):
@@ -690,13 +674,13 @@ class PickPlayerAction(BasePickPlayerAction, ChooseCommodityAction):
 
 
 @Chatflow.action("collect")
-class CollectPlayerAction(BasePickPlayerAction):
+class CollectPlayerAction(BasePickPlayerAction, mutators.RelocateItemsAction):
     def mutate(self):
         return super().mutate(self.source)
 
 
 @Chatflow.action("drop")
-class DropPlayerAction(PlayerAction, ChooseCommodityAction, DropAction):
+class DropPlayerAction(PlayerAction, ChooseCommodityAction, mutators.DropAction):
     skip_single = False  # we want a user to confirm a toss
 
     def error_unavailable(self, *args):
@@ -706,28 +690,26 @@ class DropPlayerAction(PlayerAction, ChooseCommodityAction, DropAction):
         return f'You drop {items} on the ground.'
 
 
-# class CollectPlayerAction(PlayerMutator, PickMessages, PickAction):
-#     def __call__(self):
-#         return super().__call__(self.location.items) if self.is_available else self.empty_message
-#
-#
-# class DropPlayerAction(PlayerMutator, DropAction):
-#     @property
-#     def __call__(self):
-#         return self.choice(
-#             'drop',
-#             super().__call__,
-#             CommoditySet(self.actor.bag),
-#             select_subset=True,
-#             empty_message="Your bag is already empty.")
-#
-#     def success(self, items_str):
-#         return super().success(items_str, f'drop {items_str} on the ground.')
-#
-#
-# class CommodityPlayerAction(PlayerMutator, EatAction):
-#     def success(self, items_str):
-#         return super().success(items_str, f'eat {items_str}.')
+class ItemPlayerAction(PlayerAction, ChooseCommodityAction):
+    skip_single = True
+
+    def on_done(self, item):
+        return f'You {self.action_cls.verb} {item.name}.'
+
+
+@Chatflow.action(mutators.EatAction.verb)
+class EatPlayerAction(ItemPlayerAction, mutators.EatAction):
+    pass
+
+
+@Chatflow.action(mutators.WearAction.verb)
+class WearPlayerAction(ItemPlayerAction, mutators.WearAction):
+    pass
+
+
+@Chatflow.action(mutators.WieldAction.verb)
+class WieldPlayerAction(ItemPlayerAction, mutators.WieldAction):
+    pass
 
 
 class CommoditySet(FilterSet):

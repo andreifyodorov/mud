@@ -170,15 +170,6 @@ class ActorMutator:
             source.difference_update(items)
         return FilterSet(items)
 
-    # def eat(self, item_or_items):
-    #     items = self._relocate(item_or_items, self.actor.bag)
-    #     if items:
-    #         items_str = pretty_list(items)
-    #         self.announce(f'eats {items_str}.', f'eat {items_str}.')
-    #     if any(items.filter(Mushroom)):
-    #         self.set_cooldown('high', 5)
-    #     return items
-
     def _relocate_to_slot(self, slot, item):
         current = getattr(self.actor, slot)
         if current is item:
@@ -192,23 +183,6 @@ class ActorMutator:
         if current is not None:
             self.actor.bag.add(current)
         return True
-
-    def wear(self, item):
-        if isinstance(item, Wearables) and self._relocate_to_slot('wears', item):
-            self.announce(f'wears {item.name}.', f'wear {item.name}.')
-            return item
-
-    def wield(self, item):
-        if isinstance(item, Wieldables) and self._relocate_to_slot('wields', item):
-            self.announce(f'wields {item.name}.', f'wield {item.name}.')
-            return item
-
-    def unequip(self, announce=None):
-        item = self.actor.wields
-        if item:
-            self.announce(f'puts away {item.name}.', announce and announce(item))
-            self._relocate_to_slot('wields', None)
-            return item
 
     def barter(self, counterparty, what, for_what):
         if (counterparty.barters
@@ -417,6 +391,10 @@ class Action(ActorMutator):
     is_available = True
     is_coolingdown = False
 
+    @property
+    def is_possible(self):
+        return self.is_available and not self.is_coolingdown
+
     def error_unavailable(self, *args):
         return False
 
@@ -431,21 +409,26 @@ class Action(ActorMutator):
             return self.error_unavailable(*args)
         if self.is_coolingdown:
             return self.error_coolsdown(*args)
-        error_callback = self.check_args(*args)
-        if error_callback:
-            return error_callback(*args)
         return self.after_checks(*args)
 
     def mutate(self, *args):
         raise NotImplementedError
 
     def after_checks(self, *args):
+        error_callback = self.check_args(*args)
+        if error_callback:
+            return error_callback(*args)
         result = self.mutate(*args)
         if result:
             self.on_success(result)
+        else:
+            self.on_failure(*args)
         return self.on_done(result)
 
     def on_success(self, result):
+        pass
+
+    def on_failure(self, *args):
         pass
 
     def on_done(self, result):
@@ -535,9 +518,8 @@ class ItemAction(RelocateAction):
     def source(self):
         return self.actor.bag
 
-    @property
-    def is_available(self):
-        return any(self.source.filter(self.action_cls))
+    def get_args(self):
+        return set(self.source.filter(self.action_cls))
 
     def error_wrong_class(self, item):
         return False
@@ -547,7 +529,7 @@ class ItemAction(RelocateAction):
             return self.error_wrong_class
 
     def on_success(self, item):
-        self.announce(f'{self.verb.third} {item.name}.')
+        self.announce(f'{self.action_cls.verb.third} {item.name}.')
 
 
 @ActorMutator.action(Edibles.verb)
@@ -556,68 +538,42 @@ class EatAction(ItemAction, RelocateItemsAction):
     cooldown_announce = {'high': {True: "high", False: "not high anymore"}}
 
     def mutate(self, item):
-        result = super().mutate(item)  # relocate returns a set
-        if result:
-            item, = result
-            return item
+        result = super().mutate(item)  # _relocate returns a set
+        return result.pop() if result else None
 
     def on_success(self, item):
         super().on_success(item)
         if isinstance(item, Mushroom):
             self.set_cooldown('high', 5)
 
-# class ItemAction(ActionMutator):
-#     @property
-#     def items(self):
-#         raise NotImplementedError
-#
-#     @property
-#     def is_available(self):
-#         return any(self.items)
-#
-#     def __call__(self, item_or_items):
-#         items = set()
-#         try:
-#             items.update(item_or_items)
-#         except TypeError:
-#             items.add(item_or_items)
-#
-#     def mutate(self, item_or_items, source, destination=None):
-#         items = self._relocate(item_or_items, source, destination)
-#         if items:
-#             self.announce(pretty_list(items))
-#         return items
-#
-#
-# class PickAction(RelocateAction):
-#     @property
-#     def is_available(self):
-#         return any(self.location.items)
-#
-#     def mutate(self, item_or_items):
-#         super().mutate(item_or_items, self.location.items, self.actor.bag)
-#
-#     def success(self, items_str, *args, **kwargs):
-#         return super().success(f'picks up {items_str}.', *args, **kwargs)
-#
-#
-# class DropAction(RelocateAction):
-#     @property
-#     def is_available(self):
-#         return any(self.actor.bag)
-#
-#     def mutate(self, item_or_items):
-#         super().mutate(item_or_items, self.actor.bag, self.location.items)
-#
-#     def success(self, items_str, *args, **kwargs):
-#         return super().success(f'drops {items_str} on the ground.', *args, **kwargs)
-#
-#
-#
-#
-# class RelocateToSlotAction(ActionMutator):
-#     def mutate(self, item):
-#         items = self._relocate_to_slot(item, self.slot)
-#         if items:
-#             self.announce(pretty_list(items))
-#         return items
+
+class ItemToSlotAction(ItemAction, RelocateAction):
+    def mutate(self, item):
+        if self._relocate_to_slot(self.verb.third, item):
+            return item
+
+
+@ActorMutator.action(Wearables.verb)
+class WearAction(ItemToSlotAction):
+    action_cls = Wearables
+
+
+@ActorMutator.action(Wieldables.verb)
+class WieldAction(ItemToSlotAction):
+    action_cls = Wieldables
+
+
+@ActorMutator.action("unequip")
+class UnequipAction(Action):
+    @property
+    def is_available(self):
+        return self.actor.wields is not None
+
+    def mutate(self):
+        item = self.actor.wields
+        self.actor.wields = None
+        self.actor.bag.add(item)
+        return item
+
+    def on_success(self, item):
+        self.announce(f'puts away {item.name}.')
