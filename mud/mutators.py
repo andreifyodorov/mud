@@ -389,6 +389,14 @@ class Action(ActorMutator):
     # def is_coolingdown(self):
     #     return False  # TODO: cooldown_group / action_name
 
+    class mutate_failure(Exception):
+        def __init__(self, callback):
+            super().__init__()
+            self.callback = callback
+
+        def __call__(self):
+            return self.callback()
+
     is_available = True
     is_coolingdown = False
 
@@ -419,17 +427,15 @@ class Action(ActorMutator):
         error_callback = self.check_args(*args)
         if error_callback:
             return error_callback(*args)
-        result = self.mutate(*args)
+        try:
+            result = self.mutate(*args)
+        except self.mutate_failure as failure:
+            return failure()
         if result:
             self.on_success(result)
-        else:
-            self.on_failure(*args)
         return self.on_done(result)
 
     def on_success(self, result):
-        pass
-
-    def on_failure(self, *args):
         pass
 
     def on_done(self, result):
@@ -464,20 +470,10 @@ class GoAction(ActionWithArgs):
         return True
 
 
-class RelocateAction(ActionWithArgs):
-    @property
-    def source(self):
-        raise NotImplementedError
-
-    @property
-    def destination(self):
-        return None
-
+class RelocateItemsAction(ActionWithArgs):
     def get_args(self):
         return self.source
 
-
-class RelocateItemsAction(RelocateAction):
     def mutate(self, item_or_items):
         return self._relocate(item_or_items, self.source, self.destination)
 
@@ -510,32 +506,29 @@ class DropAction(RelocateItemsAction):
         self.announce(f"drops {items} on the ground.")
 
 
-class ItemAction(RelocateAction):
-    @property
-    def source(self):
-        return self.actor.bag
-
+class ItemAction(ActionWithArgs):
     def get_args(self):
-        return set(self.source.filter(self.action_cls))
+        return set(self.actor.bag.filter(self.action_cls))
 
     def error_wrong_class(self, item):
         return False
 
-    def check_args(self, item):
+    def mutate(self, item):
         if not isinstance(item, self.action_cls):
-            return self.error_wrong_class
+            raise self.mutate_failure(lambda: self.error_wrong_class(item))
 
     def on_success(self, item):
         self.announce(f'{self.verb.third} {item.name}.')
 
 
 @ActorMutator.action(Edibles.verb)
-class EatAction(ItemAction, RelocateItemsAction):
+class EatAction(ItemAction):
     action_cls = Edibles
     cooldown_announce = {'high': {True: "high", False: "not high anymore"}}
 
     def mutate(self, item):
-        result = super().mutate(item)  # _relocate returns a set
+        super().mutate(item)
+        result = self._relocate(item, self.actor.bag)  # _relocate returns a set
         return result.pop() if result else None
 
     def on_success(self, item):
@@ -545,13 +538,14 @@ class EatAction(ItemAction, RelocateItemsAction):
 
 
 @ActorMutator.actions((Wearables, Wieldables))
-class ItemToSlotAction(ItemAction, RelocateAction):
+class ItemToSlotAction(ItemAction):
     def __init__(self, action_cls, *args):
         super().__init__(*args)
         self.action_cls = action_cls
         self.verb = action_cls.verb
 
     def mutate(self, item):
+        super().mutate(item)
         if self._relocate_to_slot(self.verb.third, item):
             return item
 
