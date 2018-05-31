@@ -119,6 +119,10 @@ class FilterSet(set):
     def __str__(self):
         return pretty_list(self)
 
+    @property
+    def pronoun(self):
+        return "them" if len(self) > 1 else "it"
+
 
 class Verb(str):
     def __new__(cls, value, third):

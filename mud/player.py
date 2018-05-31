@@ -440,7 +440,8 @@ class Chatflow(mutators.ActorMutator, HumanAttacks):
 
     def get_production_commands(self):
         for cls in MeansOfProduction.__subclasses__():
-            yield cls.verb, lambda: self.produce(cls)
+            if hasattr(self, cls.verb):
+                yield cls.verb, getattr(self, cls.verb)
 
     def input(self, cmd, f, prompt):
         return InputHandler(self.actor.input, cmd, f, prompt, cmd_pfx=self.cmd_pfx)
@@ -577,25 +578,6 @@ class Chatflow(mutators.ActorMutator, HumanAttacks):
             yield f"You can {actions_sentence} items."
             yield f"You have {credits(self.actor.credits)}."
 
-    def produce(self, means_cls):
-        means = next(self.location.means.filter(means_cls), None)
-        if not means:
-            return f"You can't {means_cls.verb} anything here."
-
-        missing = list()
-        fruits = super().produce(means, missing)
-
-        if not fruits:
-            if missing:
-                missing_str = pretty_list(i() for i in missing)
-                return f"You need {missing_str} to {means.verb}."
-            else:
-                return f"You fail to {means.verb} anything."
-
-        pronoun = "them" if len(fruits) > 1 else "it"
-        fruits_str = pretty_list(fruits)
-        return f"You {means.verb} {fruits_str}. You put {pronoun} into your {self.cmd_pfx}bag."
-
     def wakeup(self, announce=None):  # called from dispatch
         if self.actor.alive:
             self.set_cooldown('active', 20, announce)
@@ -620,7 +602,10 @@ class Chatflow(mutators.ActorMutator, HumanAttacks):
             return f"You fail to {method.verb} {self.actor.victim.name}."
 
 
-class PlayerAction(Chatflow):
+class PlayerAction(Chatflow, mutators.Action):
+    def error_coolsdown(self):
+        return f"You can't {self.verb} now. Try again later."
+
     @classmethod
     def from_mutator(cls, mutator, *args):
         return cls(*args, mutator.actor, mutator.world, mutator.cmd_pfx)
@@ -705,6 +690,16 @@ class EatPlayerAction(ItemPlayerAction, mutators.EatAction):
 @Chatflow.actions((Wearables, Wieldables))
 class ItemToSlotPlayerAction(mutators.ItemToSlotAction, ItemPlayerAction):  # order matters for __init__
     pass
+
+
+@Chatflow.actions(MeansOfProduction.__subclasses__())
+class ProducePlayerAction(mutators.ProduceAction, PlayerAction):
+    def error_missing(self, missing):
+        return f"You need {pretty_list(missing)} to {self.verb}."
+        return False
+
+    def on_done(self, fruits):
+        return f"You {self.verb} {fruits}. You put {fruits.pronoun} into your {self.cmd_pfx}bag."
 
 
 class CommoditySet(FilterSet):

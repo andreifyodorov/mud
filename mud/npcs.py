@@ -112,10 +112,9 @@ class PeasantMutator(NpcMutator, HumanAttacks):
             if tunic:
                 self.wear(tunic)
             elif self.actor.location is VillageHouse:
-                distaff, = self.location.means
-                if (self.can_produce(distaff)
+                if (self.spin.is_possible
                         and self.is_done("crafting", "spining a yarn", 20)):
-                    self.produce(distaff)
+                    self.spin()
                     self.unequip()
 
         count_edibles = len(list(self.actor.bag.filter(Edibles)))
@@ -135,8 +134,7 @@ class PeasantMutator(NpcMutator, HumanAttacks):
 
             if (self.actor.location is Field
                     and self.is_done("farming", "farming", 20)):
-                field, = self.location.means
-                self.produce(field)
+                self.farm()
 
 
 class PeasantState(HumanNpcState):

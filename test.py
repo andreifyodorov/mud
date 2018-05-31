@@ -205,7 +205,7 @@ class ChatflowTestCase(unittest.TestCase):
         self.assertEqual(len(self.player.bag), 1)
 
         self.send('#farm')
-        self.assertReplyContains('fail')
+        self.assertReplyContains("can't farm now")
         self.assertEqual(self.player.cooldown["produce"], 0)
 
         self.chatflow.act()

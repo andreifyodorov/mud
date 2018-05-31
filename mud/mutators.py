@@ -1,6 +1,7 @@
 from itertools import chain
 
 from .commodities import Commodity, Edibles, Wearables, Wieldables, Deteriorates, Mushroom
+from .production import MeansOfProduction
 from .utils import credits, pretty_list, FilterSet
 
 
@@ -221,64 +222,6 @@ class ActorMutator:
     accept_buy = _get_price
     accept_sell = _get_price
 
-    def produce_missing(self, means, missing=None):
-        if missing is None:
-            missing = []
-        tools = {}
-        # get required/optional tools
-        for t in means.optional_tools | means.required_tools:
-            tool = None
-            if isinstance(self.actor.wields, t):
-                tool = self.actor.wields
-            else:
-                tool = next(self.actor.bag.filter(t), None)
-            if tool:
-                tools[t] = tool
-            elif t in means.required_tools:
-                missing.append(t)
-        # get required materials
-        materials = {}
-        for t, n in means.required_materials.items():
-            loc = list(self.actor.bag.filter(t))
-            if len(loc) >= n:
-                materials[t] = loc[:n]
-            else:
-                missing.extend([t] * (n - len(loc)))
-        # do we miss something?
-        return missing, tools, materials
-
-    def can_produce(self, means):
-        missing, tools, materials = self.produce_missing(means)
-        return False if missing else True
-
-    def produce(self, means, missing=None):
-        missing, tools, materials = self.produce_missing(means, missing)
-        if missing:
-            return
-
-        if self.coolsdown('produce'):
-            return
-
-        self._relocate(chain.from_iterable(materials.values()), self.actor.bag)
-
-        fruit_or_fruits = means.produce(tools, materials)
-        if fruit_or_fruits is None:
-            return
-        fruits = [fruit_or_fruits] if isinstance(fruit_or_fruits, Commodity) else fruit_or_fruits
-
-        if tools:
-            tool, = tools.values()
-            self.wield(tool)
-            self.deteriorate(tool)
-        else:
-            self.unequip()
-
-        self.set_cooldown('produce', 1)
-        self.announce('%ss %s.' % (means.verb, pretty_list(fruits)))
-        self.actor.bag.update(fruits)
-
-        return fruits
-
     def deteriorate(self, commodity):
         if not isinstance(commodity, Deteriorates):
             return False
@@ -410,9 +353,6 @@ class Action(ActorMutator):
     def error_coolsdown(self, *args):
         return False
 
-    def check_args(self, *args):
-        return None
-
     def __call__(self, *args):
         if not self.is_available:
             return self.error_unavailable(*args)
@@ -420,13 +360,7 @@ class Action(ActorMutator):
             return self.error_coolsdown(*args)
         return self.after_checks(*args)
 
-    def mutate(self, *args):
-        raise NotImplementedError
-
     def after_checks(self, *args):
-        error_callback = self.check_args(*args)
-        if error_callback:
-            return error_callback(*args)
         try:
             result = self.mutate(*args)
         except self.mutate_failure as failure:
@@ -434,6 +368,9 @@ class Action(ActorMutator):
         if result:
             self.on_success(result)
         return self.on_done(result)
+
+    def mutate(self, *args):
+        raise NotImplementedError
 
     def on_success(self, result):
         pass
@@ -564,3 +501,89 @@ class UnequipAction(Action):
 
     def on_success(self, item):
         self.announce(f'puts away {item.name}.')
+
+
+@ActorMutator.actions(MeansOfProduction.__subclasses__())
+class ProduceAction(Action):
+    def __init__(self, means_cls, *args):
+        self.means_cls = means_cls
+        self.verb = means_cls.verb
+        super().__init__(*args)
+
+    @property
+    def means(self):
+        return next(self.location.means.filter(self.means_cls), None)
+
+    @property
+    def is_available(self):
+        return self.means is not None
+
+    @property
+    def is_possible(self):
+        missing, tools, materials = self.get_tools_and_materials()
+        return False if missing else True
+
+    @property
+    def is_coolingdown(self):
+        return self.coolsdown('produce')
+
+    def error_missing(self, missing):
+        return False
+
+    def on_success(self, fruit_or_fruits):
+        self.announce(f"{self.verb.third} {fruit_or_fruits}.")
+
+    def get_tools_and_materials(self):
+        means = self.means
+        missing = FilterSet()
+        tools = {}
+        # get required/optional tools
+        for t in means.optional_tools | means.required_tools:
+            tool = None
+            if isinstance(self.actor.wields, t):
+                tool = self.actor.wields
+            else:
+                tool = next(self.actor.bag.filter(t), None)
+            if tool:
+                tools[t] = tool
+            elif t in means.required_tools:
+                missing.add(t())
+        # get required materials
+        materials = {}
+        for t, n in means.required_materials.items():
+            loc = list(self.actor.bag.filter(t))
+            if len(loc) >= n:
+                materials[t] = loc[:n]
+            else:
+                missing.update(t() for _ in range(n - len(loc)))
+        # do we miss something?
+        return missing, tools, materials
+
+    def mutate(self):
+        missing, tools, materials = self.get_tools_and_materials()
+        if missing:
+            raise self.mutate_failure(lambda: self.error_missing(missing))
+
+        self._relocate(chain.from_iterable(materials.values()), self.actor.bag)
+
+        if tools:
+            tool, = tools.values()
+            self.wield(tool)
+            self.deteriorate(tool)
+        else:
+            self.unequip()
+
+        # and finally!
+        fruit_or_fruits = self.means.produce(tools, materials)
+        self.set_cooldown('produce', 1)
+
+        if fruit_or_fruits is None:
+            return
+
+        result = FilterSet()
+        try:
+            result.update(fruit_or_fruits)
+        except TypeError:
+            result.add(fruit_or_fruits)
+        self.actor.bag.update(result)
+        return result
